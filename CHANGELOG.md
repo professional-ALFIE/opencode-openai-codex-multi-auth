@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.3.1] - 2026-01-08
+
+**Installer safety release**: JSONC support, safe uninstall, and minimal reasoning clamp.
+
+### Added
+- **JSONC-aware installer**: preserves comments/formatting and prioritizes `opencode.jsonc` over `opencode.json`.
+- **Safe uninstall**: `--uninstall` removes only plugin entries + our model presets; `--all` removes tokens/logs/cache.
+- **Installer tests**: coverage for JSONC parsing, precedence, uninstall safety, and artifact cleanup.
+
+### Changed
+- **Default config path**: installer creates `~/.config/opencode/opencode.jsonc` when no config exists.
+- **Dependency**: `jsonc-parser` added to keep JSONC updates robust and comment-safe.
+
+### Fixed
+- **Minimal reasoning clamp**: `minimal` is now normalized to `low` for GPT‑5.x requests to avoid backend rejection.
+
 ## [4.3.0] - 2026-01-04
 
 **Feature + reliability release**: variants support, one-command installer, and auth/error handling fixes.

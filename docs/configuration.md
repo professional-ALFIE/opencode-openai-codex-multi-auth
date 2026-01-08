@@ -328,7 +328,7 @@ Different agents use different models:
 
 Global config has defaults, project overrides for specific work:
 
-**~/.config/opencode/opencode.json** (global):
+**~/.config/opencode/opencode.jsonc** (global, preferred):
 ```json
 {
   "plugin": ["opencode-openai-codex-auth"],
@@ -413,7 +413,8 @@ CODEX_MODE=1 opencode run "task"  # Temporarily enable
 > **⚠️ REQUIRED:** You MUST use the config that matches your OpenCode version (`opencode-modern.json` or `opencode-legacy.json`). Minimal configs are NOT supported for GPT 5 models and will fail unpredictably. OpenCode's auto-compaction and usage widgets also require the full config's per-model `limit` metadata.
 
 **Your Configs:**
-- `~/.config/opencode/opencode.json` - Global config
+- `~/.config/opencode/opencode.jsonc` - Global config (preferred)
+- `~/.config/opencode/opencode.json` - Global config (fallback)
 - `<project>/.opencode.json` - Project-specific config
 - `~/.opencode/openai-codex-auth-config.json` - Plugin config
 

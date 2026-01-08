@@ -18,14 +18,15 @@ OpenCode loads and merges configuration from multiple sources in this order (**l
 
 ### 1. Global Config
 ```
-~/.opencode/config.json
-~/.opencode/opencode.json
-~/.opencode/opencode.jsonc
+~/.config/opencode/opencode.jsonc
+~/.config/opencode/opencode.json
 ```
 
 ### 2. Project Configs (traversed upward from cwd)
 ```
+<project>/.opencode/opencode.jsonc
 <project>/.opencode/opencode.json
+<parent>/.opencode/opencode.jsonc
 <parent>/.opencode/opencode.json
 ... (up to worktree root)
 ```

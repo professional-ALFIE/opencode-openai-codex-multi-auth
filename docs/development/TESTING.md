@@ -446,7 +446,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/gpt-5-codex
 (cd ~ && rm -rf .cache/opencode/node_modules/opencode-openai-codex-auth)
 
 # 2. Use minimal config
-cat > ~/.config/opencode/opencode.json <<'EOF'
+cat > ~/.config/opencode/opencode.jsonc <<'EOF'
 {
   "plugin": ["opencode-openai-codex-auth"],
   "model": "openai/gpt-5-codex"
@@ -470,7 +470,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "write hello world to test.txt"
 
 ```bash
 # Update config with custom models
-cat > ~/.config/opencode/opencode.json <<'EOF'
+cat > ~/.config/opencode/opencode.jsonc <<'EOF'
 {
   "plugin": ["opencode-openai-codex-auth"],
   "provider": {

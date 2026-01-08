@@ -15,12 +15,12 @@ This directory contains the official opencode configuration files for the OpenAI
 
 **If you have OpenCode v1.0.210 or newer** (check with `opencode --version`):
 ```bash
-cp config/opencode-modern.json ~/.config/opencode/opencode.json
+cp config/opencode-modern.json ~/.config/opencode/opencode.jsonc
 ```
 
 **If you have OpenCode v1.0.209 or older**:
 ```bash
-cp config/opencode-legacy.json ~/.config/opencode/opencode.json
+cp config/opencode-legacy.json ~/.config/opencode/opencode.jsonc
 ```
 
 ### Why two configs?
@@ -59,10 +59,10 @@ Both configs provide:
 2. **Copy the appropriate config** based on your version:
    ```bash
    # For v1.0.210+ (recommended):
-   cp config/opencode-modern.json ~/.config/opencode/opencode.json
+   cp config/opencode-modern.json ~/.config/opencode/opencode.jsonc
 
    # For older versions:
-   cp config/opencode-legacy.json ~/.config/opencode/opencode.json
+   cp config/opencode-legacy.json ~/.config/opencode/opencode.jsonc
    ```
 
 3. **Run opencode**:

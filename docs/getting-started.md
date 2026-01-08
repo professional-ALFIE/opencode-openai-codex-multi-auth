@@ -28,7 +28,7 @@ Works on **Windows, macOS, and Linux**:
 npx -y opencode-openai-codex-auth@latest
 ```
 
-This writes the **global** config at `~/.config/opencode/opencode.json`, backs it up, and clears the OpenCode plugin cache so the latest version installs.
+This writes the **global** config at `~/.config/opencode/opencode.jsonc` (falls back to `.json` if needed), backs it up, and clears the OpenCode plugin cache so the latest version installs.
 
 Need legacy config (OpenCode v1.0.209 and below)?
 
@@ -54,7 +54,7 @@ OpenCode automatically installs plugins - no `npm install` needed!
 - OpenCode features require proper model metadata
 - This configuration has been tested and verified to work
 
-Add this to `~/.config/opencode/opencode.json`:
+Add this to `~/.config/opencode/opencode.jsonc` (or `.json`):
 
 **Tip**: The snippet below is a truncated excerpt. For the complete legacy list, copy `config/opencode-legacy.json`. For the modern variants config (OpenCode v1.0.210+), use `config/opencode-modern.json`.
 
@@ -335,7 +335,7 @@ OpenCode checks multiple config files in order:
 
 1. **Project config**: `./.opencode.json` (current directory)
 2. **Parent configs**: Walks up directory tree
-3. **Global config**: `~/.config/opencode/opencode.json`
+3. **Global config**: `~/.config/opencode/opencode.jsonc` (or `~/.config/opencode/opencode.json`)
 
 **Recommendation**: Use global config for plugin, project config for model/agent overrides.
 
@@ -353,6 +353,13 @@ Legacy OpenCode (v1.0.209 and below):
 
 ```bash
 npx -y opencode-openai-codex-auth@latest --legacy
+```
+
+## Uninstall
+
+```bash
+npx -y opencode-openai-codex-auth@latest --uninstall
+npx -y opencode-openai-codex-auth@latest --uninstall --all
 ```
 
 **When to update:**

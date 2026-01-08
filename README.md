@@ -36,6 +36,11 @@ Legacy OpenCode (v1.0.209 and below):
 npx -y opencode-openai-codex-auth@latest --legacy
 opencode run "write hello world to test.txt" --model=openai/gpt-5.2-medium
 ```
+Uninstall:
+```bash
+npx -y opencode-openai-codex-auth@latest --uninstall
+npx -y opencode-openai-codex-auth@latest --uninstall --all
+```
 ---
 ## 📦 Models
 - **gpt-5.2** (none/low/medium/high/xhigh)

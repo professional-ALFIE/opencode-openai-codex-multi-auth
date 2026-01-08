@@ -55,7 +55,7 @@ npx -y opencode-openai-codex-auth@latest --legacy
 Then run OpenCode and authenticate:
 
 ```bash
-# 1. Add plugin to ~/.config/opencode/opencode.json
+# 1. Add plugin to ~/.config/opencode/opencode.jsonc (or .json)
 # 2. Run OpenCode
 opencode
 
