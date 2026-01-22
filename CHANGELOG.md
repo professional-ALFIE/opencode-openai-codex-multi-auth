@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.4.1] - 2026-01-22
+
+**Fork maintenance release**: publish-ready metadata + installer alignment.
+
+### Changed
+- **npm publish compatibility**: Fixes `bin` paths so `npx -y opencode-openai-codex-multi-auth@latest` runs the installer.
+- **Fork docs/installer**: Uses the fork package name by default and migrates legacy identifiers.
+- **OAuth success page**: Updates banner to the fork package name and version.
+
 ## [4.4.0] - 2026-01-09
 
 **Maintenance release**: OAuth success page version sync.
