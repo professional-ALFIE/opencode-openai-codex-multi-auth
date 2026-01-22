@@ -7,11 +7,16 @@ import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parse, modify, applyEdits, printParseErrorCode } from "jsonc-parser";
 
-const PLUGIN_NAME = "opencode-openai-codex-auth";
+// This repository is a fork. Install the plugin from GitHub to ensure
+// OpenCode uses this fork instead of the upstream npm package.
+const PLUGIN_SPEC = "github:iam-brain/opencode-openai-codex-multi-auth";
+// Keep track of the upstream npm package name so we can cleanly migrate.
+const UPSTREAM_PACKAGE = "opencode-openai-codex-auth";
+const PLUGIN_ALIASES = [PLUGIN_SPEC, UPSTREAM_PACKAGE];
 const args = new Set(process.argv.slice(2));
 
 if (args.has("--help") || args.has("-h")) {
-	console.log(`Usage: ${PLUGIN_NAME} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
+	console.log(`Usage: ${UPSTREAM_PACKAGE} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
 		"Default behavior:\n" +
 		"  - Installs/updates global config at ~/.config/opencode/opencode.jsonc (falls back to .json)\n" +
 		"  - Uses modern config (variants) by default\n" +
@@ -47,7 +52,8 @@ const configDir = join(homedir(), ".config", "opencode");
 const configPathJson = join(configDir, "opencode.json");
 const configPathJsonc = join(configDir, "opencode.jsonc");
 const cacheDir = join(homedir(), ".cache", "opencode");
-const cacheNodeModules = join(cacheDir, "node_modules", PLUGIN_NAME);
+const cacheNodeModules = join(cacheDir, "node_modules", PLUGIN_SPEC);
+const cacheNodeModulesUpstream = join(cacheDir, "node_modules", UPSTREAM_PACKAGE);
 const cacheBunLock = join(cacheDir, "bun.lock");
 const cachePackageJson = join(cacheDir, "package.json");
 const opencodeAuthPath = join(homedir(), ".opencode", "auth", "openai.json");
@@ -67,19 +73,22 @@ function normalizePluginList(list) {
 	const entries = Array.isArray(list) ? list.filter(Boolean) : [];
 	const filtered = entries.filter((entry) => {
 		if (typeof entry !== "string") return true;
-		return entry !== PLUGIN_NAME && !entry.startsWith(`${PLUGIN_NAME}@`);
+		return !PLUGIN_ALIASES.some(
+			(alias) =>
+				entry === alias || entry.startsWith(`${alias}@`) || entry.includes(alias),
+		);
 	});
-	return [...filtered, PLUGIN_NAME];
+	return [...filtered, PLUGIN_SPEC];
 }
 
 function removePluginEntries(list) {
 	const entries = Array.isArray(list) ? list.filter(Boolean) : [];
 	return entries.filter((entry) => {
 		if (typeof entry !== "string") return true;
-		if (entry === PLUGIN_NAME || entry.startsWith(`${PLUGIN_NAME}@`)) {
-			return false;
-		}
-		return !entry.includes(PLUGIN_NAME);
+		return !PLUGIN_ALIASES.some(
+			(alias) =>
+				entry === alias || entry.startsWith(`${alias}@`) || entry.includes(alias),
+		);
 	});
 }
 
@@ -213,9 +222,12 @@ async function removePluginFromCachePackage() {
 	let changed = false;
 	for (const section of sections) {
 		const deps = cacheData?.[section];
-		if (deps && typeof deps === "object" && PLUGIN_NAME in deps) {
-			delete deps[PLUGIN_NAME];
-			changed = true;
+		if (!deps || typeof deps !== "object") continue;
+		for (const name of PLUGIN_ALIASES) {
+			if (name in deps) {
+				delete deps[name];
+				changed = true;
+			}
 		}
 	}
 
@@ -224,7 +236,7 @@ async function removePluginFromCachePackage() {
 	}
 
 	if (dryRun) {
-		log(`[dry-run] Would update ${cachePackageJson} to remove ${PLUGIN_NAME}`);
+		log(`[dry-run] Would update ${cachePackageJson} to remove plugin dependency`);
 		return;
 	}
 
@@ -239,9 +251,11 @@ async function clearCache() {
 
 	if (dryRun) {
 		log(`[dry-run] Would remove ${cacheNodeModules}`);
+		log(`[dry-run] Would remove ${cacheNodeModulesUpstream}`);
 		log(`[dry-run] Would remove ${cacheBunLock}`);
 	} else {
 		await rm(cacheNodeModules, { recursive: true, force: true });
+		await rm(cacheNodeModulesUpstream, { recursive: true, force: true });
 		await rm(cacheBunLock, { force: true });
 	}
 
@@ -369,7 +383,7 @@ async function main() {
 	}
 
 	const template = await readJson(templatePath);
-	template.plugin = [PLUGIN_NAME];
+	template.plugin = [PLUGIN_SPEC];
 
 	let nextConfig = template;
 	let nextContent = null;

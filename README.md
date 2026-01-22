@@ -1,12 +1,13 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
   
   
-**Curated by [Numman Ali](https://x.com/nummanali)**
-[![Twitter Follow](https://img.shields.io/twitter/follow/nummanali?style=social)](https://x.com/nummanali)
-[![npm version](https://img.shields.io/npm/v/opencode-openai-codex-auth.svg)](https://www.npmjs.com/package/opencode-openai-codex-auth)
-[![Tests](https://github.com/numman-ali/opencode-openai-codex-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/numman-ali/opencode-openai-codex-auth/actions)
-[![npm downloads](https://img.shields.io/npm/dm/opencode-openai-codex-auth.svg)](https://www.npmjs.com/package/opencode-openai-codex-auth)
-**One install. Every Codex model.**
+Fork maintained by [iam-brain](https://github.com/iam-brain).
+
+Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://github.com/numman-ali/opencode-openai-codex-auth)
+
+[![CI](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/iam-brain/opencode-openai-codex-multi-auth/actions)
+
+**One install. Every Codex model. Multi-account aware.**
 [Install](#-quick-start) · [Models](#-models) · [Configuration](#-configuration) · [Docs](#-docs)
 
 ---
@@ -24,7 +25,7 @@ OpenCode should feel effortless. This plugin keeps the setup minimal while givin
 ---
 ## 🚀 Quick Start
 ```bash
-npx -y opencode-openai-codex-auth@latest
+npx -y github:iam-brain/opencode-openai-codex-multi-auth
 ```
 Then:
 ```bash
@@ -33,14 +34,16 @@ opencode run "write hello world to test.txt" --model=openai/gpt-5.2 --variant=me
 ```
 Legacy OpenCode (v1.0.209 and below):
 ```bash
-npx -y opencode-openai-codex-auth@latest --legacy
+npx -y github:iam-brain/opencode-openai-codex-multi-auth --legacy
 opencode run "write hello world to test.txt" --model=openai/gpt-5.2-medium
 ```
 Uninstall:
 ```bash
-npx -y opencode-openai-codex-auth@latest --uninstall
-npx -y opencode-openai-codex-auth@latest --uninstall --all
+npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall
+npx -y github:iam-brain/opencode-openai-codex-multi-auth --uninstall --all
 ```
+
+Note: this fork installs the plugin via a GitHub spec (`github:iam-brain/opencode-openai-codex-multi-auth`) so OpenCode pulls this fork, not the upstream npm package.
 ---
 ## 📦 Models
 - **gpt-5.2** (none/low/medium/high/xhigh)
@@ -76,5 +79,10 @@ Minimal configs are not supported for GPT‑5.x; use the full configs above.
 ## ⚠️ Usage Notice
 This plugin is for **personal development use** with your own ChatGPT Plus/Pro subscription.
 For production or multi‑user applications, use the OpenAI Platform API.
+
+## Credits
+
+- Original implementation and ongoing upstream work: Numman Ali and contributors (`numman-ali/opencode-openai-codex-auth`)
+- This fork: multi-account pool, sticky-by-default rotation with PID offset, round-robin option, and account tools/toasts
 
 **Built for developers who value simplicity.**

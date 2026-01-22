@@ -33,4 +33,4 @@ This plugin bridges two different systems with careful engineering:
 
 ---
 
-**Quick Links**: [GitHub](https://github.com/iam-brain/opencode-openai-codex-multi-auth) • [npm](https://www.npmjs.com/package/opencode-openai-codex-auth)
+**Quick Links**: [GitHub](https://github.com/iam-brain/opencode-openai-codex-multi-auth)

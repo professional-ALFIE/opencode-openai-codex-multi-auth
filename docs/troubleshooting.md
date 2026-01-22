@@ -209,7 +209,7 @@ Items are not persisted when `store` is set to false.
 **Solution:**
 ```bash
 # Update plugin
-npx -y opencode-openai-codex-auth@latest
+npx -y github:iam-brain/opencode-openai-codex-multi-auth
 
 # Restart OpenCode
 opencode
@@ -432,7 +432,7 @@ cat ~/.opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"total_t
    - Config file (redact sensitive info)
 
 3. **Check existing issues:**
-   - [GitHub Issues](https://github.com/numman-ali/opencode-openai-codex-auth/issues)
+   - [GitHub Issues](https://github.com/iam-brain/opencode-openai-codex-multi-auth/issues)
 
 ### Reporting Bugs
 

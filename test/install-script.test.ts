@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { parse } from 'jsonc-parser';
 
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts', 'install-opencode-codex-auth.js');
+const EXPECTED_PLUGIN = 'github:iam-brain/opencode-openai-codex-multi-auth';
 
 const runInstaller = (args: string[], homeDir: string) => {
 	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
@@ -36,11 +37,11 @@ describe('Install script', () => {
 			homeDir,
 			'opencode.jsonc',
 			`{
-  // My existing config
-  "plugin": ["some-other-plugin@1.2.3", "opencode-openai-codex-auth@4.2.0"],
-  "provider": {
-    "openai": {
-      "timeout": 60000,
+	  // My existing config
+	  "plugin": ["some-other-plugin@1.2.3", "opencode-openai-codex-auth@4.2.0"],
+	  "provider": {
+	    "openai": {
+	      "timeout": 60000,
       "models": { "custom-model": { "name": "Custom" } }
     }
   }
@@ -51,7 +52,7 @@ describe('Install script', () => {
 
 		const { content, data } = readJsoncFile(configPath);
 		expect(content).toContain('// My existing config');
-		expect(data.plugin).toContain('opencode-openai-codex-auth');
+		expect(data.plugin).toContain(EXPECTED_PLUGIN);
 		expect(data.plugin).toContain('some-other-plugin@1.2.3');
 		expect(data.provider.openai.timeout).toBe(60000);
 		expect(data.provider.openai.models['custom-model']).toBeDefined();
@@ -75,7 +76,7 @@ describe('Install script', () => {
 		runInstaller(['--no-cache-clear'], homeDir);
 
 		const { data } = readJsoncFile(jsoncPath);
-		expect(data.plugin).toContain('opencode-openai-codex-auth');
+		expect(data.plugin).toContain(EXPECTED_PLUGIN);
 		const jsonAfter = readFileSync(jsonPath, 'utf-8');
 		expect(jsonAfter).toBe(jsonBefore);
 	});
@@ -86,7 +87,7 @@ describe('Install script', () => {
 		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
 		expect(existsSync(configPath)).toBe(true);
 		const { data } = readJsoncFile(configPath);
-		expect(data.plugin).toContain('opencode-openai-codex-auth');
+		expect(data.plugin).toContain(EXPECTED_PLUGIN);
 	});
 
 	it('uninstall removes plugin models but keeps custom config', () => {
@@ -95,8 +96,8 @@ describe('Install script', () => {
 			homeDir,
 			'opencode.jsonc',
 			`{
-  "plugin": ["some-other-plugin@1.2.3", "opencode-openai-codex-auth@4.2.0"],
-  "provider": {
+	  "plugin": ["some-other-plugin@1.2.3", "opencode-openai-codex-auth@4.2.0"],
+	  "provider": {
     "openai": {
       "timeout": 60000,
       "models": {
