@@ -6,7 +6,10 @@
   "types": "./dist/index.d.ts",
   "type": "module",
   "license": "MIT",
-  "author": "iam-brain",
+  "author": "Numman Ali",
+  "contributors": [
+    "iam-brain (https://github.com/iam-brain)"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/iam-brain/opencode-openai-codex-multi-auth.git"
