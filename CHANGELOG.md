@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.4.3] - 2026-01-23
+
+**Compliance release**: third-party notices for MIT-derived code.
+
+### Added
+- `THIRD_PARTY_NOTICES.md` with the MIT license text for `NoeFabris/opencode-antigravity-auth`.
+
 ## [4.4.2] - 2026-01-23
 
 **Multi-account strategy release**: hybrid selection and expanded docs.
