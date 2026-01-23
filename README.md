@@ -83,6 +83,7 @@ For production or multi‑user applications, use the OpenAI Platform API.
 ## Credits
 
 - Original implementation and ongoing upstream work: Numman Ali and contributors (`numman-ali/opencode-openai-codex-auth`)
+- Multi-account strategy + UX inspiration (rotation modes, PID offset approach, toasts): NoeFabris and contributors (`NoeFabris/opencode-antigravity-auth`)
 - This fork: multi-account pool, sticky-by-default rotation with PID offset, round-robin option, and account tools/toasts
 
 **Built for developers who value simplicity.**

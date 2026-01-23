@@ -2,6 +2,8 @@
 
 This plugin supports multiple ChatGPT Plus/Pro accounts so you can distribute requests across accounts when rate limits are reached.
 
+Multi-account behavior and the overall UX are heavily inspired by `NoeFabris/opencode-antigravity-auth` (adapted for OpenAI Codex OAuth).
+
 ## Quick Start
 
 Add accounts by running:
@@ -86,6 +88,9 @@ Example accounts file:
   }
 }
 ```
+
+`version` is the **accounts file format version**. The plugin currently reads/writes version `3`.
+It's not related to the npm package version; it exists so the file format can evolve safely over time.
 
 Security note: this file contains OAuth refresh tokens. Treat it like a password file.
 
