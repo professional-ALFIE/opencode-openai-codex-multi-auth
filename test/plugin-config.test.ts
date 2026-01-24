@@ -53,7 +53,7 @@ describe('Plugin Configuration', () => {
 
 			expect(config).toEqual(expectedDefault);
 			expect(mockExistsSync).toHaveBeenCalledWith(
-				path.join(os.homedir(), '.opencode', 'openai-codex-auth-config.json')
+				path.join(os.homedir(), '.config', 'opencode', 'openai-codex-auth-config.json')
 			);
 		});
 

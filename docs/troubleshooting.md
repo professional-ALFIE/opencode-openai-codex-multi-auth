@@ -104,7 +104,7 @@ lsof -i :1455
 **Solutions:**
 
 **1. Wait for the shortest reset window:**
-- The plugin tracks rate-limit reset times per account in `~/.opencode/openai-codex-accounts.json`
+- The plugin tracks rate-limit reset times per account in `~/.config/opencode/openai-codex-accounts.json`
 
 **2. Add another account:**
 ```bash
@@ -113,7 +113,7 @@ opencode auth login
 
 **3. Check your selection strategy:**
 - Default is `sticky` (best caching)
-- If you want maximum throughput with many accounts, set `accountSelectionStrategy: "round-robin"` in `~/.opencode/openai-codex-auth-config.json`
+- If you want maximum throughput with many accounts, set `accountSelectionStrategy: "round-robin"` in `~/.config/opencode/openai-codex-auth-config.json`
 
 **4. For parallel agents, keep PID offset enabled:**
 - `pidOffsetEnabled: true` helps parallel OpenCode sessions start on different accounts
@@ -123,7 +123,7 @@ opencode auth login
 If tokens were revoked or you want to start over:
 
 ```bash
-rm ~/.opencode/openai-codex-accounts.json
+rm ~/.config/opencode/openai-codex-accounts.json
 opencode auth login
 ```
 

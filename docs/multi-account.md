@@ -38,7 +38,7 @@ When enabled and you have 2+ accounts, each process will pick a different **star
 
 Each process still behaves "sticky" after choosing its initial account.
 
-Enable it in `~/.opencode/openai-codex-auth-config.json`:
+Enable it in `~/.config/opencode/openai-codex-auth-config.json`:
 
 ```json
 {
@@ -69,8 +69,8 @@ These are primarily useful in the OpenCode TUI.
 
 Accounts are stored on disk so you don't have to re-auth every run.
 
-- Accounts file: `~/.opencode/openai-codex-accounts.json`
-- Plugin config: `~/.opencode/openai-codex-auth-config.json`
+- Accounts file: `~/.config/opencode/openai-codex-accounts.json`
+- Plugin config: `~/.config/opencode/openai-codex-auth-config.json`
 
 Example accounts file:
 
@@ -118,7 +118,7 @@ Security note: this file contains OAuth refresh tokens. Treat it like a password
 
 ## Account Selection Strategies
 
-Configure in `~/.opencode/openai-codex-auth-config.json`:
+Configure in `~/.config/opencode/openai-codex-auth-config.json`:
 
 ```json
 {
@@ -143,6 +143,6 @@ CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
 If tokens are revoked or you want to start over:
 
 ```bash
-rm ~/.opencode/openai-codex-accounts.json
+rm ~/.config/opencode/openai-codex-accounts.json
 opencode auth login
 ```

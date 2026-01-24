@@ -376,7 +376,7 @@ While you can set `CODEX_MODE=0` to disable the bridge prompt, it's better to do
 
 ❌ **Bad**: `CODEX_MODE=0 opencode`
 
-✅ **Good**: Create `~/.opencode/openai-codex-auth-config.json`:
+✅ **Good**: Create `~/.config/opencode/openai-codex-auth-config.json`:
 ```json
 {
   "codexMode": false

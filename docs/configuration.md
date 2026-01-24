@@ -363,7 +363,7 @@ Result: Project uses `high`, other projects use `medium`.
 
 ## Plugin Configuration
 
-Advanced plugin settings in `~/.opencode/openai-codex-auth-config.json`:
+Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`:
 
 ```json
 {
@@ -393,7 +393,7 @@ CODEX_MODE=1 opencode run "task"  # Temporarily enable
 
 Multi-account settings live in the same plugin config file:
 
-- `~/.opencode/openai-codex-auth-config.json`
+- `~/.config/opencode/openai-codex-auth-config.json`
 
 Add `$schema` for editor autocompletion:
 
@@ -409,7 +409,7 @@ Add `$schema` for editor autocompletion:
 
 Account pool storage:
 
-- `~/.opencode/openai-codex-accounts.json`
+- `~/.config/opencode/openai-codex-accounts.json`
 
 For a detailed guide, see [docs/multi-account.md](multi-account.md).
 
@@ -467,7 +467,7 @@ CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
 - `~/.config/opencode/opencode.jsonc` - Global config (preferred)
 - `~/.config/opencode/opencode.json` - Global config (fallback)
 - `<project>/.opencode.json` - Project-specific config
-- `~/.opencode/openai-codex-auth-config.json` - Plugin config
+- `~/.config/opencode/openai-codex-auth-config.json` - Plugin config
 
 ---
 

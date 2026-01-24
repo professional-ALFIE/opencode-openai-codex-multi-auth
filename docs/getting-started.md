@@ -311,7 +311,7 @@ opencode auth login
 4. Log in with your ChatGPT account
 5. Done! Token saved to `~/.opencode/auth/openai.json`
 
-**Multi-account:** Run `opencode auth login` again to add more ChatGPT accounts (you'll be prompted to add vs fresh start). Accounts are stored in `~/.opencode/openai-codex-accounts.json`. See [Multi-Account](multi-account.md).
+**Multi-account:** Run `opencode auth login` again to add more ChatGPT accounts (you'll be prompted to add vs fresh start). Accounts are stored in `~/.config/opencode/openai-codex-accounts.json`. See [Multi-Account](multi-account.md).
 
 **⚠️ Important**: If you have the official Codex CLI running, stop it first (both use port 1455 for OAuth callback).
 

@@ -61,11 +61,10 @@ const cacheNodeModulesLegacyGitHub = join(cacheDir, "node_modules", LEGACY_GITHU
 const cacheBunLock = join(cacheDir, "bun.lock");
 const cachePackageJson = join(cacheDir, "package.json");
 const opencodeAuthPath = join(homedir(), ".opencode", "auth", "openai.json");
-const pluginConfigPath = join(
-	homedir(),
-	".opencode",
-	"openai-codex-auth-config.json",
-);
+const pluginConfigPath = join(configDir, "openai-codex-auth-config.json");
+const legacyPluginConfigPath = join(homedir(), ".opencode", "openai-codex-auth-config.json");
+const legacyAccountsPath = join(homedir(), ".opencode", "openai-codex-accounts.json");
+const accountsPath = join(configDir, "openai-codex-accounts.json");
 const pluginLogDir = join(homedir(), ".opencode", "logs", "codex-plugin");
 const opencodeCacheDir = join(homedir(), ".opencode", "cache");
 
@@ -272,10 +271,16 @@ async function clearPluginArtifacts() {
 	if (dryRun) {
 		log(`[dry-run] Would remove ${opencodeAuthPath}`);
 		log(`[dry-run] Would remove ${pluginConfigPath}`);
+		log(`[dry-run] Would remove ${legacyPluginConfigPath}`);
+		log(`[dry-run] Would remove ${accountsPath}`);
+		log(`[dry-run] Would remove ${legacyAccountsPath}`);
 		log(`[dry-run] Would remove ${pluginLogDir}`);
 	} else {
 		await rm(opencodeAuthPath, { force: true });
 		await rm(pluginConfigPath, { force: true });
+		await rm(legacyPluginConfigPath, { force: true });
+		await rm(accountsPath, { force: true });
+		await rm(legacyAccountsPath, { force: true });
 		await rm(pluginLogDir, { recursive: true, force: true });
 	}
 

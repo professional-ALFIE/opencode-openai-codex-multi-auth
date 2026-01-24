@@ -131,11 +131,16 @@ describe('Install script', () => {
 		);
 
 		const opencodeDir = join(homeDir, '.opencode');
+		const configDir = join(homeDir, '.config', 'opencode');
 		mkdirSync(join(opencodeDir, 'auth'), { recursive: true });
 		mkdirSync(join(opencodeDir, 'logs', 'codex-plugin'), { recursive: true });
 		mkdirSync(join(opencodeDir, 'cache'), { recursive: true });
+		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(opencodeDir, 'auth', 'openai.json'), '{}');
 		writeFileSync(join(opencodeDir, 'openai-codex-auth-config.json'), '{}');
+		writeFileSync(join(opencodeDir, 'openai-codex-accounts.json'), '{}');
+		writeFileSync(join(configDir, 'openai-codex-auth-config.json'), '{}');
+		writeFileSync(join(configDir, 'openai-codex-accounts.json'), '{}');
 		writeFileSync(join(opencodeDir, 'logs', 'codex-plugin', 'log.txt'), 'log');
 		writeFileSync(join(opencodeDir, 'cache', 'codex-instructions.md'), 'cache');
 
@@ -143,6 +148,9 @@ describe('Install script', () => {
 
 		expect(existsSync(join(opencodeDir, 'auth', 'openai.json'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'openai-codex-auth-config.json'))).toBe(false);
+		expect(existsSync(join(opencodeDir, 'openai-codex-accounts.json'))).toBe(false);
+		expect(existsSync(join(configDir, 'openai-codex-auth-config.json'))).toBe(false);
+		expect(existsSync(join(configDir, 'openai-codex-accounts.json'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'logs', 'codex-plugin'))).toBe(false);
 		expect(existsSync(join(opencodeDir, 'cache', 'codex-instructions.md'))).toBe(false);
 	});

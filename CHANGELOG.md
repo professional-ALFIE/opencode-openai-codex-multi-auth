@@ -16,6 +16,17 @@ All notable changes to this project are documented here. Dates use the ISO forma
 ### Fixed
 - Restores terminal raw mode/mouse tracking after interactive auth prompts to prevent mouse movements being interpreted as typed input.
 
+## [4.4.5] - 2026-01-23
+
+**Bugfix release**: align account/config storage with OpenCode's config directory.
+
+### Changed
+- Store `openai-codex-accounts.json` and `openai-codex-auth-config.json` under `~/.config/opencode/`.
+- Automatically migrate legacy files from `~/.opencode/` on startup.
+
+### Installer
+- `--uninstall --all` removes both the new and legacy locations.
+
 ## [4.4.2] - 2026-01-23
 
 **Multi-account strategy release**: hybrid selection and expanded docs.

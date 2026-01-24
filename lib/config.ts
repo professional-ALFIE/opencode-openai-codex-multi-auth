@@ -1,9 +1,45 @@
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type { PluginConfig } from "./types.js";
 
-const CONFIG_PATH = join(homedir(), ".opencode", "openai-codex-auth-config.json");
+const CONFIG_FILE = "openai-codex-auth-config.json";
+
+function getOpencodeConfigDir(): string {
+	const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+	if (xdgConfigHome && xdgConfigHome.trim()) {
+		return join(xdgConfigHome, "opencode");
+	}
+	return join(homedir(), ".config", "opencode");
+}
+
+const CONFIG_PATH = join(getOpencodeConfigDir(), CONFIG_FILE);
+const LEGACY_CONFIG_PATH = join(homedir(), ".opencode", CONFIG_FILE);
+
+function migrateLegacyConfigIfNeeded(): void {
+	if (existsSync(CONFIG_PATH)) return;
+	if (!existsSync(LEGACY_CONFIG_PATH)) return;
+
+	try {
+		mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+		try {
+			renameSync(LEGACY_CONFIG_PATH, CONFIG_PATH);
+			return;
+		} catch {
+			copyFileSync(LEGACY_CONFIG_PATH, CONFIG_PATH);
+			unlinkSync(LEGACY_CONFIG_PATH);
+		}
+	} catch {
+		// Best-effort migration; ignore.
+	}
+}
 
 /**
  * Default plugin configuration
@@ -22,13 +58,14 @@ const DEFAULT_CONFIG: PluginConfig = {
 };
 
 /**
- * Load plugin configuration from ~/.opencode/openai-codex-auth-config.json
+ * Load plugin configuration from ~/.config/opencode/openai-codex-auth-config.json
  * Falls back to defaults if file doesn't exist or is invalid
  *
  * @returns Plugin configuration
  */
 export function loadPluginConfig(): PluginConfig {
 	try {
+		migrateLegacyConfigIfNeeded();
 		if (!existsSync(CONFIG_PATH)) {
 			return DEFAULT_CONFIG;
 		}
