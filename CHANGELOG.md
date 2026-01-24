@@ -9,6 +9,13 @@ All notable changes to this project are documented here. Dates use the ISO forma
 ### Added
 - `THIRD_PARTY_NOTICES.md` with the MIT license text for `NoeFabris/opencode-antigravity-auth`.
 
+## [4.4.4] - 2026-01-23
+
+**Bugfix release**: fixes broken terminal input after OAuth login.
+
+### Fixed
+- Restores terminal raw mode/mouse tracking after interactive auth prompts to prevent mouse movements being interpreted as typed input.
+
 ## [4.4.2] - 2026-01-23
 
 **Multi-account strategy release**: hybrid selection and expanded docs.

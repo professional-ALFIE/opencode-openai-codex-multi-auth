@@ -73,7 +73,7 @@ import {
 	isOAuthAuth,
 	sanitizeEmail,
 } from "./lib/accounts.js";
-import { promptAddAnotherAccount, promptLoginMode } from "./lib/cli.js";
+import { promptAddAnotherAccount, promptLoginMode, promptOAuthCallbackValue } from "./lib/cli.js";
 import { getStoragePath, loadAccounts, saveAccounts } from "./lib/storage.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
@@ -534,17 +534,6 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							inputs?.noBrowser === "true" ||
 							inputs?.["no-browser"] === "true" ||
 							process.env.OPENCODE_NO_BROWSER === "1";
-
-						const promptOAuthCallbackValue = async (message: string): Promise<string> => {
-							const { createInterface } = await import("node:readline/promises");
-							const { stdin, stdout } = await import("node:process");
-							const rl = createInterface({ input: stdin, output: stdout });
-							try {
-								return (await rl.question(message)).trim();
-							} finally {
-								rl.close();
-							}
-						};
 
 						const runOAuthFlow = async (): Promise<TokenResult> => {
 							const { pkce, state, url } = await createAuthorizationFlow();
