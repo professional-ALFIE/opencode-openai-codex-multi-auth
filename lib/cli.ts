@@ -1,6 +1,5 @@
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-
 import { withTerminalModeRestored } from "./terminal.js";
 
 export interface ExistingAccountLabel {

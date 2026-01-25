@@ -74,14 +74,21 @@ import {
 	sanitizeEmail,
 } from "./lib/accounts.js";
 import { promptAddAnotherAccount, promptLoginMode, promptOAuthCallbackValue } from "./lib/cli.js";
+import { withTerminalModeRestored } from "./lib/terminal.js";
 import { getStoragePath, loadAccounts, saveAccounts } from "./lib/storage.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
-import type { OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
+import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
 const MAX_ACCOUNTS = 10;
+const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
+
+const debugAuth = (...args: unknown[]): void => {
+	if (!AUTH_DEBUG_ENABLED) return;
+	console.debug(...args);
+};
 
 function shouldRefreshToken(auth: OAuthAuthDetails, skewMs: number): boolean {
 	return !auth.access || auth.expires <= Date.now() + Math.max(0, Math.floor(skewMs));
@@ -160,11 +167,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	type TokenOk = Extract<TokenSuccess, { type: "success" }>;
 
 	const persistAccount = async (token: TokenOk): Promise<void> => {
+		debugAuth("[PersistAccount] Starting account persistence");
 		const now = Date.now();
 		const stored = await loadAccounts();
 		const accounts = stored?.accounts ? [...stored.accounts] : [];
 		const accountId = extractAccountId(token.access);
 		const email = sanitizeEmail(extractAccountEmail(token.access));
+
+		debugAuth(
+			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, existing accounts: ${accounts.length}`,
+		);
 
 		const matchIndex =
 			(accountId ? accounts.findIndex((a) => a.accountId === accountId) : -1) ?? -1;
@@ -177,7 +189,12 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					? matchIndexByEmail
 					: matchIndexByToken;
 
+		debugAuth(
+			`[PersistAccount] Match indices - byId: ${matchIndex}, byEmail: ${matchIndexByEmail}, byToken: ${matchIndexByToken}, final: ${existingIndex}`,
+		);
+
 		if (existingIndex === -1) {
+			debugAuth("[PersistAccount] Adding new account");
 			accounts.push({
 				refreshToken: token.refresh,
 				accountId,
@@ -186,6 +203,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				lastUsed: now,
 			});
 		} else {
+			debugAuth(`[PersistAccount] Updating existing account at index ${existingIndex}`);
 			const existing = accounts[existingIndex];
 			if (existing) {
 				existing.refreshToken = token.refresh;
@@ -196,12 +214,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		}
 
 		const activeIndex = stored?.activeIndex ?? 0;
-		await saveAccounts({
+		const storageToSave: AccountStorageV3 = {
 			version: 3,
 			accounts,
 			activeIndex: Math.max(0, Math.min(activeIndex, accounts.length - 1)),
 			activeIndexByFamily: stored?.activeIndexByFamily ?? {},
-		});
+		};
+
+		debugAuth(`[PersistAccount] Saving storage with ${accounts.length} accounts`);
+		await saveAccounts(storageToSave);
+		debugAuth("[PersistAccount] Account persistence completed");
 	};
 
 	return {
@@ -527,135 +549,232 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					 *
 					 * @returns Authorization flow configuration
 					 */
-					authorize: async (inputs?: Record<string, string>) => {
-						const pluginConfig = loadPluginConfig();
-						const quietMode = getQuietMode(pluginConfig);
-						const noBrowser =
-							inputs?.noBrowser === "true" ||
-							inputs?.["no-browser"] === "true" ||
-							process.env.OPENCODE_NO_BROWSER === "1";
+				authorize: async (inputs?: Record<string, string>) => {
+					const pluginConfig = loadPluginConfig();
+					const quietMode = getQuietMode(pluginConfig);
+					const isCliFlow = Boolean(inputs);
 
-						const runOAuthFlow = async (): Promise<TokenResult> => {
-							const { pkce, state, url } = await createAuthorizationFlow();
-							console.log("\nOAuth URL:\n" + url + "\n");
+					// CLI flow (`opencode auth login`) passes inputs; TUI does not.
+					if (isCliFlow) {
+						debugAuth("[OAuthAuthorize] Starting OAuth flow in CLI mode");
+						return await withTerminalModeRestored(async () => {
+							const noBrowser =
+								inputs?.noBrowser === "true" ||
+								inputs?.["no-browser"] === "true" ||
+								process.env.OPENCODE_NO_BROWSER === "1";
 
-							if (noBrowser) {
-								const callbackInput = await promptOAuthCallbackValue(
-									"Paste the redirect URL (or just the code) here: ",
-								);
-								const parsed = parseAuthorizationInput(callbackInput);
-								if (!parsed.code) return { type: "failed" as const };
-								return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-							}
+							const runOAuthFlow = async (): Promise<TokenResult> => {
+								const { pkce, state, url } = await createAuthorizationFlow();
+								console.log("\nOAuth URL:\n" + url + "\n");
 
-							let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
-							try {
-								serverInfo = await startLocalOAuthServer({ state });
-							} catch {
-								serverInfo = null;
-							}
-							openBrowserUrl(url);
-
-							if (!serverInfo || !serverInfo.ready) {
-								serverInfo?.close();
-								const callbackInput = await promptOAuthCallbackValue(
-									"Paste the redirect URL (or just the code) here: ",
-								);
-								const parsed = parseAuthorizationInput(callbackInput);
-								if (!parsed.code) return { type: "failed" as const };
-								return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
-							}
-
-							const result = await serverInfo.waitForCode(state);
-							serverInfo.close();
-							if (!result) return { type: "failed" as const };
-							return await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
-						};
-
-						const authenticated: TokenOk[] = [];
-						let startFresh = true;
-						const existingStorage = await loadAccounts();
-						if (existingStorage && existingStorage.accounts.length > 0) {
-							const existingLabels = existingStorage.accounts.map((a, index) => ({
-								index,
-								email: a.email,
-								accountId: a.accountId,
-							}));
-							const mode = await promptLoginMode(existingLabels);
-							startFresh = mode === "fresh";
-						}
-
-						if (startFresh) {
-							await saveAccounts({
-								version: 3,
-								accounts: [],
-								activeIndex: 0,
-								activeIndexByFamily: {},
-							});
-						}
-
-						while (authenticated.length < MAX_ACCOUNTS) {
-							console.log(`\n=== OpenAI OAuth (Account ${authenticated.length + 1}) ===`);
-							const result = await runOAuthFlow();
-							if (result.type !== "success") {
-								if (authenticated.length === 0) {
-									return {
-										url: "",
-										instructions: "Authentication failed.",
-										method: "auto" as const,
-										callback: async () => ({ type: "failed" as const }),
-									};
+								if (noBrowser) {
+									const callbackInput = await promptOAuthCallbackValue(
+										"Paste the redirect URL (or just the code) here: ",
+									);
+									const parsed = parseAuthorizationInput(callbackInput);
+									if (!parsed.code) return { type: "failed" as const };
+									return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
 								}
-								break;
+
+								let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
+								try {
+									serverInfo = await startLocalOAuthServer({ state });
+								} catch {
+									serverInfo = null;
+								}
+								openBrowserUrl(url);
+
+								if (!serverInfo || !serverInfo.ready) {
+									serverInfo?.close();
+									const callbackInput = await promptOAuthCallbackValue(
+										"Paste the redirect URL (or just the code) here: ",
+									);
+									const parsed = parseAuthorizationInput(callbackInput);
+									if (!parsed.code) return { type: "failed" as const };
+									return await exchangeAuthorizationCode(parsed.code, pkce.verifier, REDIRECT_URI);
+								}
+
+								const result = await serverInfo.waitForCode(state);
+								serverInfo.close();
+								if (!result) return { type: "failed" as const };
+								return await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
+							};
+
+							const authenticated: TokenOk[] = [];
+							let startFresh = true;
+							const existingStorage = await loadAccounts();
+							if (existingStorage && existingStorage.accounts.length > 0) {
+								const existingLabels = existingStorage.accounts.map((a, index) => ({
+									index,
+									email: a.email,
+									accountId: a.accountId,
+								}));
+								const mode = await promptLoginMode(existingLabels);
+								startFresh = mode === "fresh";
 							}
 
-							authenticated.push(result);
-							await persistAccount(result);
-							await showToast(
-								`Account ${authenticated.length} authenticated`,
-								"success",
-								quietMode,
+							if (startFresh) {
+								await saveAccounts({
+									version: 3,
+									accounts: [],
+									activeIndex: 0,
+									activeIndexByFamily: {},
+								});
+							}
+
+							while (authenticated.length < MAX_ACCOUNTS) {
+								console.log(`\n=== OpenAI OAuth (Account ${authenticated.length + 1}) ===`);
+								const result = await runOAuthFlow();
+								if (result.type !== "success") {
+									if (authenticated.length === 0) {
+										return {
+											url: "",
+											instructions: "Authentication failed.",
+											method: "auto" as const,
+											callback: async () => ({ type: "failed" as const }),
+										};
+									}
+									break;
+								}
+
+								authenticated.push(result);
+								await persistAccount(result);
+								await showToast(
+									`Account ${authenticated.length} authenticated`,
+									"success",
+									quietMode,
+								);
+
+								const currentStorage = await loadAccounts();
+								const count = currentStorage?.accounts.length ?? authenticated.length;
+								if (!(await promptAddAnotherAccount(count, MAX_ACCOUNTS))) break;
+							}
+
+							const primary = authenticated[0];
+							if (!primary) {
+								return {
+									url: "",
+									instructions: "Authentication cancelled",
+									method: "auto" as const,
+									callback: async () => ({ type: "failed" as const }),
+								};
+							}
+
+							const finalStorage = await loadAccounts();
+							const finalCount = finalStorage?.accounts.length ?? authenticated.length;
+							debugAuth(
+								`[OAuthAuthorize] OAuth flow completed with ${finalCount} accounts`,
 							);
-
-							const currentStorage = await loadAccounts();
-							const count = currentStorage?.accounts.length ?? authenticated.length;
-							if (!(await promptAddAnotherAccount(count, MAX_ACCOUNTS))) break;
-						}
-
-						const primary = authenticated[0];
-						if (!primary) {
 							return {
 								url: "",
-								instructions: "Authentication cancelled",
+								instructions: `Multi-account setup complete (${finalCount} account(s)).\nStorage: ${getStoragePath()}`,
 								method: "auto" as const,
-								callback: async () => ({ type: "failed" as const }),
+								callback: async () => primary,
 							};
-						}
+						});
+					}
 
-						const finalStorage = await loadAccounts();
-						const finalCount = finalStorage?.accounts.length ?? authenticated.length;
+					debugAuth("[OAuthAuthorize] Starting OAuth flow in TUI mode");
+					const isHeadless = Boolean(
+						process.env.SSH_CONNECTION ||
+							process.env.SSH_CLIENT ||
+							process.env.SSH_TTY ||
+							process.env.OPENCODE_HEADLESS,
+					);
+					const useManualFlow = isHeadless || process.env.OPENCODE_NO_BROWSER === "1";
+					const existingStorage = await loadAccounts();
+					const existingCount = existingStorage?.accounts.length ?? 0;
+
+					const { pkce, state, url } = await createAuthorizationFlow();
+					let serverInfo: Awaited<ReturnType<typeof startLocalOAuthServer>> | null = null;
+					if (!useManualFlow) {
+						try {
+							serverInfo = await startLocalOAuthServer({ state });
+						} catch {
+							serverInfo = null;
+						}
+					}
+					if (!useManualFlow) {
+						openBrowserUrl(url);
+					}
+
+					if (serverInfo && serverInfo.ready) {
 						return {
-							url: "",
-							instructions: `Multi-account setup complete (${finalCount} account(s)).\nStorage: ${getStoragePath()}`,
+							url,
+							instructions:
+								"Complete sign-in in your browser. We'll automatically detect the redirect back to localhost.",
 							method: "auto" as const,
-							callback: async () => primary,
+							callback: async () => {
+								const result = await serverInfo.waitForCode(state);
+								serverInfo.close();
+								if (!result) return { type: "failed" as const };
+								const tokens = await exchangeAuthorizationCode(
+									result.code,
+									pkce.verifier,
+									REDIRECT_URI,
+								);
+								if (tokens?.type === "success") {
+									await persistAccount(tokens);
+									const email = sanitizeEmail(extractAccountEmail(tokens.access));
+									const newTotal = existingCount + 1;
+									const toastMessage =
+										existingCount > 0
+											? `Added account${email ? ` (${email})` : ""} - ${newTotal} total`
+											: `Authenticated${email ? ` (${email})` : ""}`;
+									await showToast(toastMessage, "success", quietMode);
+								}
+								return tokens?.type === "success"
+									? tokens
+									: { type: "failed" as const };
+							},
 						};
+					}
+
+					serverInfo?.close();
+
+					return {
+						url,
+						instructions:
+							"Visit the URL above, complete OAuth, then paste either the full redirect URL or the authorization code.",
+						method: "code" as const,
+						callback: async (input: string) => {
+							const parsed = parseAuthorizationInput(input);
+							if (!parsed.code) return { type: "failed" as const };
+							const tokens = await exchangeAuthorizationCode(
+								parsed.code,
+								pkce.verifier,
+								REDIRECT_URI,
+							);
+							if (tokens?.type === "success") {
+								await persistAccount(tokens);
+								const email = sanitizeEmail(extractAccountEmail(tokens.access));
+								const newTotal = existingCount + 1;
+								const toastMessage =
+									existingCount > 0
+										? `Added account${email ? ` (${email})` : ""} - ${newTotal} total`
+										: `Authenticated${email ? ` (${email})` : ""}`;
+								await showToast(toastMessage, "success", quietMode);
+							}
+							return tokens?.type === "success"
+								? tokens
+								: { type: "failed" as const };
+						},
+					};
+					},
+				{
+					label: AUTH_LABELS.OAUTH_MANUAL,
+					type: "oauth" as const,
+					authorize: async () => {
+						const { pkce, url } = await createAuthorizationFlow();
+						return buildManualOAuthFlow(pkce, url, async (tokens) => {
+							await persistAccount(tokens);
+						});
 					},
 				},
-					{
-						label: AUTH_LABELS.OAUTH_MANUAL,
-						type: "oauth" as const,
-						authorize: async () => {
-							const { pkce, url } = await createAuthorizationFlow();
-							return buildManualOAuthFlow(pkce, url, async (tokens) => {
-								await persistAccount(tokens);
-							});
-						},
-					},
-					{
-						label: AUTH_LABELS.API_KEY,
-						type: "api" as const,
-					},
+				{
+					label: AUTH_LABELS.API_KEY,
+					type: "api" as const,
+				},
 			],
 		},
 		tool: {
