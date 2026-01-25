@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.4.6] - 2026-01-25
+
+**Bugfix release**: make TUI login non-interactive; improve account migration reliability.
+
+### Fixed
+- **CLI vs TUI auth mismatch**: `opencode auth login` keeps the full multi-account workflow (add/fresh + add-another prompts), while TUI-based login no longer overlays terminal prompts on the UI.
+- **TUI login flow**: provider selection in the TUI now performs a single login and returns to the provider list (antigravity-style behavior).
+
+### Changed
+- **Migration behavior**: when both legacy (`~/.opencode/`) and new (`~/.config/opencode/`) account files exist, the plugin merges and deduplicates accounts instead of ignoring the legacy file.
+- **Debug gating**: auth/storage debug output stays behind `OPENCODE_OPENAI_AUTH_DEBUG=1`.
+
 ## [4.4.3] - 2026-01-23
 
 **Compliance release**: third-party notices for MIT-derived code.
