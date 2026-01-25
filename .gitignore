@@ -10,3 +10,5 @@ tmp
 .codex-cache
 
 test-third-account.mjs
+
+BUG_FIXES.md
