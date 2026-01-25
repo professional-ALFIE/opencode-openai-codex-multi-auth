@@ -549,7 +549,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					 *
 					 * @returns Authorization flow configuration
 					 */
-				authorize: async (inputs?: Record<string, string>) => {
+					authorize: async (inputs?: Record<string, string>) => {
 					const pluginConfig = loadPluginConfig();
 					const quietMode = getQuietMode(pluginConfig);
 					const isCliFlow = Boolean(inputs);
@@ -760,7 +760,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								: { type: "failed" as const };
 						},
 					};
-					},
+				},
+				},
 				{
 					label: AUTH_LABELS.OAUTH_MANUAL,
 					type: "oauth" as const,
