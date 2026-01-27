@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { parse } from 'jsonc-parser';
 
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts', 'install-opencode-codex-auth.js');
-const EXPECTED_PLUGIN = 'opencode-openai-codex-multi-auth';
+const EXPECTED_PLUGIN_LATEST = 'opencode-openai-codex-multi-auth@latest';
 
 const runInstaller = (args: string[], homeDir: string) => {
 	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
@@ -52,7 +52,7 @@ describe('Install script', () => {
 
 		const { content, data } = readJsoncFile(configPath);
 		expect(content).toContain('// My existing config');
-		expect(data.plugin).toContain(EXPECTED_PLUGIN);
+		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
 		expect(data.plugin).toContain('some-other-plugin@1.2.3');
 		expect(data.provider.openai.timeout).toBe(60000);
 		expect(data.provider.openai.models['custom-model']).toBeDefined();
@@ -76,7 +76,7 @@ describe('Install script', () => {
 		runInstaller(['--no-cache-clear'], homeDir);
 
 		const { data } = readJsoncFile(jsoncPath);
-		expect(data.plugin).toContain(EXPECTED_PLUGIN);
+		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
 		const jsonAfter = readFileSync(jsonPath, 'utf-8');
 		expect(jsonAfter).toBe(jsonBefore);
 	});
@@ -87,7 +87,37 @@ describe('Install script', () => {
 		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
 		expect(existsSync(configPath)).toBe(true);
 		const { data } = readJsoncFile(configPath);
-		expect(data.plugin).toContain(EXPECTED_PLUGIN);
+		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
+	});
+
+	it('preserves pinned plugin versions', () => {
+		const homeDir = makeHome();
+		const configPath = writeConfig(
+			homeDir,
+			'opencode.jsonc',
+			`{ "plugin": ["opencode-openai-codex-multi-auth@4.4.0", "some-other-plugin@1.2.3"] }`,
+		);
+
+		runInstaller(['--no-cache-clear'], homeDir);
+
+		const { data } = readJsoncFile(configPath);
+		expect(data.plugin).toContain('opencode-openai-codex-multi-auth@4.4.0');
+		expect(data.plugin).not.toContain(EXPECTED_PLUGIN_LATEST);
+	});
+
+	it('rewrites unpinned plugin to @latest', () => {
+		const homeDir = makeHome();
+		const configPath = writeConfig(
+			homeDir,
+			'opencode.jsonc',
+			`{ "plugin": ["opencode-openai-codex-multi-auth", "some-other-plugin@1.2.3"] }`,
+		);
+
+		runInstaller(['--no-cache-clear'], homeDir);
+
+		const { data } = readJsoncFile(configPath);
+		expect(data.plugin).not.toContain('opencode-openai-codex-multi-auth');
+		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
 	});
 
 	it('uninstall removes plugin models but keeps custom config', () => {

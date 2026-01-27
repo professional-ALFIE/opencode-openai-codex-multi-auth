@@ -10,16 +10,18 @@ import { parse, modify, applyEdits, printParseErrorCode } from "jsonc-parser";
 // This repository is a fork. Install the plugin from GitHub to ensure
 // OpenCode uses this fork instead of the upstream npm package.
 // The npm package name for this fork.
-const PLUGIN_SPEC = "opencode-openai-codex-multi-auth";
+const PLUGIN_PACKAGE = "opencode-openai-codex-multi-auth";
+// Keep the OpenCode plugin entry unpinned so it stays up to date.
+const PLUGIN_ENTRY_LATEST = `${PLUGIN_PACKAGE}@latest`;
 // Keep track of older identifiers so we can migrate cleanly.
 const UPSTREAM_PACKAGE = "opencode-openai-codex-auth";
 const LEGACY_GITHUB_SPEC = "github:iam-brain/opencode-openai-codex-multi-auth";
-const PLUGIN_ALIASES = [PLUGIN_SPEC, UPSTREAM_PACKAGE, LEGACY_GITHUB_SPEC];
+const PLUGIN_ALIASES = [PLUGIN_PACKAGE, UPSTREAM_PACKAGE, LEGACY_GITHUB_SPEC];
 const args = new Set(process.argv.slice(2));
 
 if (args.has("--help") || args.has("-h")) {
 	console.log(
-		`Usage: ${PLUGIN_SPEC} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
+		`Usage: ${PLUGIN_PACKAGE} [--modern|--legacy] [--uninstall] [--all] [--dry-run] [--no-cache-clear]\n\n` +
 		"Default behavior:\n" +
 		"  - Installs/updates global config at ~/.config/opencode/opencode.jsonc (falls back to .json)\n" +
 		"  - Uses modern config (variants) by default\n" +
@@ -55,7 +57,7 @@ const configDir = join(homedir(), ".config", "opencode");
 const configPathJson = join(configDir, "opencode.json");
 const configPathJsonc = join(configDir, "opencode.jsonc");
 const cacheDir = join(homedir(), ".cache", "opencode");
-const cacheNodeModules = join(cacheDir, "node_modules", PLUGIN_SPEC);
+const cacheNodeModules = join(cacheDir, "node_modules", PLUGIN_PACKAGE);
 const cacheNodeModulesUpstream = join(cacheDir, "node_modules", UPSTREAM_PACKAGE);
 const cacheNodeModulesLegacyGitHub = join(cacheDir, "node_modules", LEGACY_GITHUB_SPEC);
 const cacheBunLock = join(cacheDir, "bun.lock");
@@ -72,8 +74,19 @@ function log(message) {
 	console.log(message);
 }
 
+function isPluginPackageSpec(entry) {
+	return typeof entry === "string" && entry.startsWith(`${PLUGIN_PACKAGE}@`);
+}
+
+function resolveDesiredPluginEntry(list) {
+	const entries = Array.isArray(list) ? list.filter(Boolean) : [];
+	const existingPinned = entries.find(isPluginPackageSpec);
+	return typeof existingPinned === "string" ? existingPinned : PLUGIN_ENTRY_LATEST;
+}
+
 function normalizePluginList(list) {
 	const entries = Array.isArray(list) ? list.filter(Boolean) : [];
+	const desiredPluginEntry = resolveDesiredPluginEntry(entries);
 	const filtered = entries.filter((entry) => {
 		if (typeof entry !== "string") return true;
 		return !PLUGIN_ALIASES.some(
@@ -81,7 +94,7 @@ function normalizePluginList(list) {
 				entry === alias || entry.startsWith(`${alias}@`) || entry.includes(alias),
 		);
 	});
-	return [...filtered, PLUGIN_SPEC];
+	return [...filtered, desiredPluginEntry];
 }
 
 function removePluginEntries(list) {
@@ -394,7 +407,7 @@ async function main() {
 	}
 
 	const template = await readJson(templatePath);
-	template.plugin = [PLUGIN_SPEC];
+	template.plugin = [PLUGIN_ENTRY_LATEST];
 
 	let nextConfig = template;
 	let nextContent = null;
