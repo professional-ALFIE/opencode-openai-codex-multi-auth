@@ -181,7 +181,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, plan: ${plan}, existing accounts: ${accounts.length}`,
 		);
 
-		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan });
+		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
 
 		debugAuth(`[PersistAccount] Match index: ${existingIndex}`);
 

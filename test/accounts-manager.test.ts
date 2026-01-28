@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,6 +19,12 @@ function createAuth(refresh: string, access = "access"): OAuthAuthDetails {
 	};
 }
 
+function loadFixture(fileName: string): AccountStorageV3 {
+	return JSON.parse(
+		readFileSync(new URL(`./fixtures/${fileName}`, import.meta.url), "utf-8"),
+	) as AccountStorageV3;
+}
+
 function createJwt(claims: Record<string, unknown>): string {
 	const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64");
 	const payload = Buffer.from(JSON.stringify(claims)).toString("base64");
@@ -30,8 +36,8 @@ function createStorage(count: number): AccountStorageV3 {
 	return {
 		version: 3,
 		accounts: Array.from({ length: count }, (_, idx) => ({
-			refreshToken: `refresh-${idx}`,
-			accountId: `acct-${idx}`,
+			refreshToken: `rt_test_${idx}.token`,
+			accountId: `00000000-0000-4000-8000-00000000000${idx}`,
 			addedAt: now,
 			lastUsed: 0,
 		})),
@@ -74,36 +80,20 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
+			const fixture = loadFixture("openai-codex-accounts.json");
+			const accountOne = fixture.accounts[0]!;
+			const accountTwo = fixture.accounts[1]!;
 			const initialStorage: AccountStorageV3 = {
-				version: 3,
-				accounts: [
-					{
-						refreshToken: "refresh-0",
-						accountId: "acct-0",
-						plan: "Plus",
-						addedAt: 1,
-						lastUsed: 1,
-					},
-				],
-				activeIndex: 0,
-				activeIndexByFamily: { codex: 0 },
+				...fixture,
+				accounts: [accountOne],
 			};
 			await saveAccounts(initialStorage);
 
-			const manager = await AccountManager.loadFromDisk(createAuth("refresh-0"));
+			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
 
 			const expandedStorage: AccountStorageV3 = {
-				...initialStorage,
-				accounts: [
-					...initialStorage.accounts,
-					{
-						refreshToken: "refresh-1",
-						accountId: "acct-1",
-						plan: "Team",
-						addedAt: 2,
-						lastUsed: 2,
-					},
-				],
+				...fixture,
+				accounts: [accountOne, accountTwo],
 			};
 			await saveAccounts(expandedStorage);
 
@@ -111,7 +101,9 @@ describe("AccountManager", () => {
 			const finalStorage = await loadAccounts();
 
 			expect(finalStorage?.accounts.length).toBe(2);
-			expect(finalStorage?.accounts.some((a) => a.accountId === "acct-1")).toBe(true);
+			expect(
+				finalStorage?.accounts.some((a) => a.accountId === accountTwo.accountId),
+			).toBe(true);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -121,52 +113,105 @@ describe("AccountManager", () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
 		try {
+			const fixture = loadFixture("openai-codex-accounts-plan.json");
+			const accountPlus = fixture.accounts[0]!;
+			const accountTeam = fixture.accounts[1]!;
 			const storage: AccountStorageV3 = {
-				version: 3,
-				accounts: [
-					{
-						refreshToken: "refresh-plus",
-						accountId: "acct-dup",
-						plan: "Plus",
-						addedAt: 1,
-						lastUsed: 1,
-					},
-					{
-						refreshToken: "refresh-team",
-						accountId: "acct-dup",
-						plan: "Team",
-						addedAt: 2,
-						lastUsed: 2,
-					},
-				],
-				activeIndex: 0,
-				activeIndexByFamily: { codex: 0 },
+				...fixture,
+				accounts: [accountPlus, accountTeam],
 			};
 			await saveAccounts(storage);
 
 			const access = createJwt({
 				[JWT_CLAIM_PATH]: {
-					chatgpt_account_id: "acct-dup",
+					chatgpt_account_id: accountPlus.accountId,
 					chatgpt_plan_type: "plus",
-					email: "user@example.com",
+					email: accountPlus.email,
 				},
 			});
 			const manager = await AccountManager.loadFromDisk(
-				createAuth("refresh-fallback", access),
+				createAuth(accountPlus.refreshToken, access),
 			);
 			const snapshot = manager.getAccountsSnapshot();
 			const plus = snapshot.find((account) => account.plan === "Plus");
 			const team = snapshot.find((account) => account.plan === "Team");
 
-			expect(plus?.refreshToken).toBe("refresh-fallback");
-			expect(team?.refreshToken).toBe("refresh-team");
+			expect(plus?.refreshToken).toBe(accountPlus.refreshToken);
+			expect(team?.refreshToken).toBe(accountTeam.refreshToken);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves email-specific entries when plan matches", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const fixture = loadFixture("openai-codex-accounts.json");
+			const accountOne = fixture.accounts[1]!;
+			const accountTwo = fixture.accounts[2]!;
+			const storage: AccountStorageV3 = {
+				...fixture,
+				accounts: [accountOne, accountTwo],
+			};
+			await saveAccounts(storage);
+
+			const access = createJwt({
+				[JWT_CLAIM_PATH]: {
+					chatgpt_account_id: accountOne.accountId,
+					chatgpt_plan_type: "team",
+					email: accountOne.email,
+				},
+			});
+			const manager = await AccountManager.loadFromDisk(
+				createAuth(accountOne.refreshToken, access),
+			);
+			const snapshot = manager.getAccountsSnapshot();
+			const first = snapshot.find((account) => account.email === accountOne.email);
+			const second = snapshot.find((account) => account.email === accountTwo.email);
+
+			expect(first?.refreshToken).toBe(accountOne.refreshToken);
+			expect(second?.refreshToken).toBe(accountTwo.refreshToken);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("does not overwrite other plans when fallback plan is missing", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const fixture = loadFixture("openai-codex-accounts-plan.json");
+			const accountPlus = fixture.accounts[0]!;
+			const accountTeam = fixture.accounts[1]!;
+			const storage: AccountStorageV3 = {
+				...fixture,
+				accounts: [accountPlus, accountTeam],
+			};
+			await saveAccounts(storage);
+
+			const access = createJwt({
+				[JWT_CLAIM_PATH]: {
+					chatgpt_account_id: accountPlus.accountId,
+					email: accountPlus.email,
+				},
+			});
+			const manager = await AccountManager.loadFromDisk(
+				createAuth(accountPlus.refreshToken, access),
+			);
+			const snapshot = manager.getAccountsSnapshot();
+			const plus = snapshot.find((account) => account.plan === "Plus");
+			const team = snapshot.find((account) => account.plan === "Team");
+
+			expect(plus?.refreshToken).toBe(accountPlus.refreshToken);
+			expect(team?.refreshToken).toBe(accountTeam.refreshToken);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
 
 	it("applies PID offset once in sticky mode", () => {
-		const manager = new AccountManager(createAuth("refresh-0"), createStorage(3));
+		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(3));
 
 		const first = manager.getCurrentOrNextForFamily(family, null, "sticky", true);
 		expect(first?.index).toBe(1);
@@ -176,7 +221,7 @@ describe("AccountManager", () => {
 	});
 
 	it("round-robin rotates accounts each call", () => {
-		const manager = new AccountManager(createAuth("refresh-0"), createStorage(3));
+		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(3));
 
 		const first = manager.getCurrentOrNextForFamily(family, null, "round-robin", true);
 		const second = manager.getCurrentOrNextForFamily(family, null, "round-robin", true);
@@ -186,7 +231,7 @@ describe("AccountManager", () => {
 	});
 
 	it("skips rate-limited current account in sticky mode", () => {
-		const manager = new AccountManager(createAuth("refresh-0"), createStorage(2));
+		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(2));
 		const first = manager.getCurrentOrNextForFamily(family, null, "sticky", false);
 		expect(first?.index).toBe(0);
 
@@ -198,7 +243,7 @@ describe("AccountManager", () => {
 	});
 
 	it("does not duplicate rate-limit keys when model matches family", () => {
-		const manager = new AccountManager(createAuth("refresh-0"), createStorage(1));
+		const manager = new AccountManager(createAuth("rt_test_0.token"), createStorage(1));
 		const codexFamily: ModelFamily = "gpt-5.2-codex";
 
 		const account = manager.getCurrentOrNextForFamily(

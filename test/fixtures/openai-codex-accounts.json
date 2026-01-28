@@ -1,0 +1,46 @@
+{
+  "version": 3,
+  "accounts": [
+    {
+      "refreshToken": "rt_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0.u1V2w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9N0",
+      "accountId": "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+      "email": "user.one@example.com",
+      "plan": "Plus",
+      "addedAt": 1769551000000,
+      "lastUsed": 1769552000000,
+      "lastSwitchReason": "rate-limit",
+      "rateLimitResetTimes": {
+        "gpt-5.2-codex": 1769553000000
+      }
+    },
+    {
+      "refreshToken": "rt_B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1.v2W3x4Y5z6A7b8C9d0E1f2G3h4I5j6K7l8M9n0",
+      "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+      "email": "user.one@example.com",
+      "plan": "Team",
+      "addedAt": 1769551100000,
+      "lastUsed": 1769552100000,
+      "lastSwitchReason": "rate-limit",
+      "rateLimitResetTimes": {
+        "gpt-5.2-codex": 1769553200000
+      }
+    },
+    {
+      "refreshToken": "rt_C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2.w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9N0q1",
+      "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+      "email": "user.two@example.com",
+      "plan": "Team",
+      "addedAt": 1769551200000,
+      "lastUsed": 1769552200000,
+      "lastSwitchReason": "rate-limit"
+    }
+  ],
+  "activeIndex": 0,
+  "activeIndexByFamily": {
+    "gpt-5.2-codex": 0,
+    "codex-max": 0,
+    "codex": 0,
+    "gpt-5.2": 0,
+    "gpt-5.1": 0
+  }
+}

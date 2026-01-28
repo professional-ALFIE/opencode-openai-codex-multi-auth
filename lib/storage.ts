@@ -180,6 +180,7 @@ function mergeAccounts(
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
+			email: candidate.email,
 		});
 		if (matchIndex < 0) {
 			merged.push({ ...candidate });

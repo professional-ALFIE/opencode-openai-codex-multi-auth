@@ -173,6 +173,7 @@ function mergeAccountRecords(
 		const matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
+			email: candidate.email,
 		});
 		if (matchIndex < 0) {
 			merged.push({
@@ -286,14 +287,38 @@ export class AccountManager {
 
 		if (stored && stored.accounts.length > 0) {
 			const baseNow = nowMs();
+			const fallbackMatchIndex = (() => {
+				if (!authFallback) return -1;
+				if (fallbackAccountId && fallbackPlan) {
+					const exact = findAccountMatchIndex(stored.accounts, {
+						accountId: fallbackAccountId,
+						plan: fallbackPlan,
+						email: fallbackEmail,
+					});
+					if (exact >= 0) return exact;
+				}
+				if (authFallback.refresh) {
+					const refreshIndex = stored.accounts.findIndex(
+						(record) => record.refreshToken === authFallback.refresh,
+					);
+					if (refreshIndex >= 0) return refreshIndex;
+				}
+				if (fallbackAccountId) {
+					const matches = stored.accounts.filter(
+						(record) => record.accountId === fallbackAccountId,
+					);
+					if (matches.length === 1) {
+						return stored.accounts.findIndex(
+							(record) => record.accountId === fallbackAccountId,
+						);
+					}
+				}
+				return -1;
+			})();
 			this.accounts = stored.accounts
 				.map((record, index): ManagedAccount | null => {
 					if (!record?.refreshToken) return null;
-					const planMatches = !fallbackPlan || !record.plan || record.plan === fallbackPlan;
-					const matchesFallback =
-						!!authFallback &&
-						(record.refreshToken === authFallback.refresh ||
-							(planMatches && fallbackAccountId && record.accountId === fallbackAccountId));
+					const matchesFallback = !!authFallback && index === fallbackMatchIndex;
 
 					return {
 						index,
@@ -313,15 +338,7 @@ export class AccountManager {
 				})
 				.filter((a): a is ManagedAccount => a !== null);
 
-			const hasMatchingFallback =
-				!!authFallback &&
-				this.accounts.some((a) => {
-					const planMatches = !fallbackPlan || !a.plan || a.plan === fallbackPlan;
-					return (
-						a.refreshToken === authFallback.refresh ||
-						(planMatches && fallbackAccountId && a.accountId === fallbackAccountId)
-					);
-				});
+			const hasMatchingFallback = !!authFallback && fallbackMatchIndex >= 0;
 
 			if (authFallback && !hasMatchingFallback) {
 				const now = nowMs();

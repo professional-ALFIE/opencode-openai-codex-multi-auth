@@ -1,52 +1,48 @@
 import { describe, it, expect } from "vitest";
 
-import { findAccountMatchIndex } from "../lib/account-matching.js";
-import type { AccountRecordV3 } from "../lib/types.js";
+import { readFileSync } from "node:fs";
 
-const accounts: AccountRecordV3[] = [
-	{
-		refreshToken: "refresh-1",
-		accountId: "acct-1",
-		plan: "Plus",
-		addedAt: 1,
-		lastUsed: 1,
-	},
-	{
-		refreshToken: "refresh-2",
-		accountId: "acct-1",
-		plan: "Team",
-		addedAt: 2,
-		lastUsed: 2,
-	},
-	{
-		refreshToken: "refresh-3",
-		accountId: "acct-2",
-		plan: "Plus",
-		addedAt: 3,
-		lastUsed: 3,
-	},
-];
+import { findAccountMatchIndex } from "../lib/account-matching.js";
+import type { AccountRecordV3, AccountStorageV3 } from "../lib/types.js";
+
+const fixture = JSON.parse(
+	readFileSync(new URL("./fixtures/openai-codex-accounts.json", import.meta.url), "utf-8"),
+) as AccountStorageV3;
+const accounts = fixture.accounts as AccountRecordV3[];
+const accountOne = accounts[0]!;
+const accountTwo = accounts[1]!;
+const accountThree = accounts[2]!;
 
 describe("account matching", () => {
-	it("matches by accountId and plan when plan is present", () => {
+	it("matches by accountId, plan, and email", () => {
 		const index = findAccountMatchIndex(accounts, {
-			accountId: "acct-1",
-			plan: "Team",
+			accountId: accountThree.accountId,
+			plan: accountThree.plan,
+			email: accountThree.email,
 		});
-		expect(index).toBe(1);
+		expect(index).toBe(2);
 	});
 
-	it("does not match when plan differs", () => {
+	it("does not match when email differs", () => {
 		const index = findAccountMatchIndex(accounts, {
-			accountId: "acct-1",
-			plan: "Pro",
+			accountId: accountTwo.accountId,
+			plan: accountTwo.plan,
+			email: "other@example.com",
 		});
 		expect(index).toBe(-1);
 	});
 
-	it("falls back to accountId when plan is missing", () => {
+	it("returns -1 when plan is missing and multiple matches exist", () => {
 		const index = findAccountMatchIndex(accounts, {
-			accountId: "acct-1",
+			accountId: accountTwo.accountId,
+		});
+		expect(index).toBe(-1);
+	});
+
+	it("matches by accountId and email when plan is missing and unique", () => {
+		const index = findAccountMatchIndex(accounts, {
+			accountId: accountOne.accountId,
+			email: accountOne.email,
 		});
 		expect(index).toBe(0);
 	});

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+
 import {
 	createState,
 	parseAuthorizationInput,
@@ -9,6 +11,34 @@ import {
 	REDIRECT_URI,
 	SCOPE,
 } from '../lib/auth/auth.js';
+
+type CallbackFixture = {
+	callbacks: Array<{
+		url: string;
+		expected: { code: string; state?: string };
+		account: {
+			refreshToken: string;
+			accountId: string;
+			email: string;
+			plan: string;
+		};
+	}>;
+};
+
+type AccountsFixture = {
+	accounts: Array<{
+		refreshToken: string;
+		accountId: string;
+		email: string;
+		plan: string;
+	}>;
+};
+
+function loadFixture<T>(fileName: string): T {
+	return JSON.parse(
+		readFileSync(new URL(`./fixtures/${fileName}`, import.meta.url), 'utf-8'),
+	) as T;
+}
 
 describe('Auth Module', () => {
 	describe('createState', () => {
@@ -29,6 +59,24 @@ describe('Auth Module', () => {
 			const input = 'http://localhost:1455/auth/callback?code=abc123&state=xyz789';
 			const result = parseAuthorizationInput(input);
 			expect(result).toEqual({ code: 'abc123', state: 'xyz789' });
+		});
+
+		it('should parse fixture callback URLs', () => {
+			const callbacks = loadFixture<CallbackFixture>('oauth-callbacks.json');
+			const accounts = loadFixture<AccountsFixture>('openai-codex-accounts.json');
+
+			for (const entry of callbacks.callbacks) {
+				const parsed = parseAuthorizationInput(entry.url);
+				expect(parsed).toEqual(entry.expected);
+				const matchesAccount = accounts.accounts.some(
+					(account) =>
+						account.refreshToken === entry.account.refreshToken &&
+						account.accountId === entry.account.accountId &&
+						account.email === entry.account.email &&
+						account.plan === entry.account.plan,
+				);
+				expect(matchesAccount).toBe(true);
+			}
 		});
 
 		it('should parse code#state format', () => {
