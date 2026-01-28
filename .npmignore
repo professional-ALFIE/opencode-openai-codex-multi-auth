@@ -12,3 +12,4 @@ test-*.mjs
 .idea/
 docs/
 .github/
+AGENTS.md
