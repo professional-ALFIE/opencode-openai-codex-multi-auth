@@ -355,7 +355,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 								let accountAuth = accountManager.toAuthDetails(account);
 								if (shouldRefreshToken(accountAuth, tokenRefreshSkewMs)) {
-									const refreshed = await refreshAccessToken(account.refreshToken);
+								const refreshed = await accountManager.refreshAccountWithFallback(account);
 									if (refreshed.type !== "success") {
 										accountManager.markAccountCoolingDown(
 											account,

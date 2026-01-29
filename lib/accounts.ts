@@ -8,6 +8,7 @@ import type {
 	CooldownReason,
 	OAuthAuthDetails,
 	RateLimitStateV3,
+	TokenResult,
 } from "./types.js";
 import { loadAccounts, saveAccounts } from "./storage.js";
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
@@ -274,6 +275,7 @@ export class AccountManager {
 
 	private lastToastAccountIndex = -1;
 	private lastToastTime = 0;
+	private refreshInFlight = new Map<number, Promise<TokenResult>>();
 
 	static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
 		const stored = await loadAccounts();
@@ -596,7 +598,7 @@ export class AccountManager {
 		for (const account of this.accounts) {
 			if (account.email && account.accountId) continue;
 			try {
-				const refreshed = await refreshAccessToken(account.refreshToken);
+				const refreshed = await this.refreshAccountWithLock(account);
 				if (refreshed.type !== "success") continue;
 				const tokenForClaims = refreshed.idToken ?? refreshed.access;
 				account.accountId = extractAccountId(tokenForClaims) ?? account.accountId;
@@ -632,6 +634,55 @@ export class AccountManager {
 			}
 		}
 		return waitTimes.length > 0 ? Math.min(...waitTimes) : 0;
+	}
+
+	async refreshAccountWithLock(
+		account: ManagedAccount,
+		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
+	): Promise<TokenResult> {
+		const existing = this.refreshInFlight.get(account.index);
+		if (existing) return existing;
+
+		const refreshPromise = (async () => {
+			try {
+				return await refreshFn(account.refreshToken);
+			} finally {
+				this.refreshInFlight.delete(account.index);
+			}
+		})();
+
+		this.refreshInFlight.set(account.index, refreshPromise);
+		return refreshPromise;
+	}
+
+	async refreshAccountWithFallback(
+		account: ManagedAccount,
+		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
+	): Promise<TokenResult> {
+		const first = await this.refreshAccountWithLock(account, refreshFn);
+		if (first.type === "success") return first;
+
+		const latest = await loadAccounts().catch(() => null);
+		if (!latest?.accounts || latest.accounts.length === 0) return first;
+
+		const matchIndex = findAccountMatchIndex(latest.accounts, {
+			accountId: account.accountId,
+			plan: account.plan,
+			email: account.email,
+		});
+		if (matchIndex < 0) return first;
+
+		const latestRecord = latest.accounts[matchIndex];
+		if (!latestRecord?.refreshToken || latestRecord.refreshToken === account.refreshToken) {
+			return first;
+		}
+
+		account.refreshToken = latestRecord.refreshToken;
+		if (!account.accountId && latestRecord.accountId) account.accountId = latestRecord.accountId;
+		if (!account.email && latestRecord.email) account.email = latestRecord.email;
+		if (!account.plan && latestRecord.plan) account.plan = latestRecord.plan;
+
+		return this.refreshAccountWithLock(account, refreshFn);
 	}
 
 	async saveToDisk(): Promise<void> {

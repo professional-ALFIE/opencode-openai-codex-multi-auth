@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { vi } from "vitest";
+
 import { AccountManager } from "../lib/accounts.js";
 import { JWT_CLAIM_PATH } from "../lib/constants.js";
 import { loadAccounts, saveAccounts } from "../lib/storage.js";
@@ -104,6 +106,74 @@ describe("AccountManager", () => {
 			expect(
 				finalStorage?.accounts.some((a) => a.accountId === accountTwo.accountId),
 			).toBe(true);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("dedupes concurrent refresh for same account", async () => {
+		const fixture = loadFixture("openai-codex-accounts.json");
+		const accountOne = fixture.accounts[0]!;
+		const manager = new AccountManager(createAuth(accountOne.refreshToken), fixture);
+
+		const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+		if (!account) throw new Error("Expected account");
+
+		const refreshFn = vi.fn(async (token: string) => {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			return {
+				type: "success" as const,
+				access: "access",
+				refresh: `${token}-new`,
+				expires: Date.now() + 60_000,
+			};
+		});
+
+		const [first, second] = await Promise.all([
+			manager.refreshAccountWithLock(account, refreshFn),
+			manager.refreshAccountWithLock(account, refreshFn),
+		]);
+
+		expect(refreshFn).toHaveBeenCalledTimes(1);
+		expect(first.type).toBe("success");
+		expect(second.type).toBe("success");
+	});
+
+	it("retries refresh when disk has newer token", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const fixture = loadFixture("openai-codex-accounts.json");
+			const accountOne = fixture.accounts[0]!;
+			const updatedToken =
+				"rt_Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2H1g0F9.e8D7c6B5a4Z3y2X1w0V9u8T7s6R5q4P3o2N1m0L9k8";
+
+			await saveAccounts({ ...fixture, accounts: [accountOne] });
+			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
+			const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+			if (!account) throw new Error("Expected account");
+
+			await saveAccounts({
+				...fixture,
+				accounts: [{ ...accountOne, refreshToken: updatedToken }],
+			});
+
+			const refreshFn = vi.fn(async (token: string) => {
+				if (token === accountOne.refreshToken) {
+					return { type: "failed" as const };
+				}
+				return {
+					type: "success" as const,
+					access: "access",
+					refresh: token,
+					expires: Date.now() + 60_000,
+				};
+			});
+
+			const result = await manager.refreshAccountWithFallback(account, refreshFn);
+			expect(result.type).toBe("success");
+			expect(refreshFn).toHaveBeenCalledTimes(2);
+			expect(refreshFn.mock.calls[1]?.[0]).toBe(updatedToken);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
