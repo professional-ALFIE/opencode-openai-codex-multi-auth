@@ -12,6 +12,7 @@ Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://githu
 [Install](#-quick-start) · [Models](#-models) · [Configuration](#-configuration) · [Docs](#-docs)
 
 **NOTE:**
+
 Currently, the CLI (opencode auth login) path does not work correctly due to a possibly unintentional bug in how Opencode handles provider logins in their CLI. The TUI (opencode > ctrl + x m, ctrl + a, OpenAI) path works perfectly as it functions as intended.
 > Related issue: [Issue #10898](https://github.com/anomalyco/opencode/issues/10898)
 
