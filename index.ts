@@ -112,6 +112,7 @@ import {
 	createRefreshScheduler,
 	type RefreshScheduler,
 } from "./lib/refresh-queue.js";
+import { formatRateLimitStatusMessage, formatToastMessage } from "./lib/formatting.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
@@ -167,7 +168,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	): Promise<void> => {
 		if (quietMode) return;
 		try {
-			await client.tui.showToast({ body: { message, variant } });
+			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
 		} catch {
 			// ignore (non-TUI contexts)
 		}
@@ -707,12 +708,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								continue;
 							}
 
-							const storePath = getStoragePath();
-							const waitLabel = waitMs > 0 ? formatWaitTime(waitMs) : "a bit";
-							const message =
-								accountManager.getAccountCount() === 0
-									? "No OpenAI accounts configured. Run `opencode auth login`."
-									: `All ${accountManager.getAccountCount()} account(s) are rate-limited. Try again in ${waitLabel} or add another account with \`opencode auth login\`. (Storage: ${storePath})`;
+							const message = formatRateLimitStatusMessage({
+								accountCount: accountManager.getAccountCount(),
+								waitMs,
+								storagePath: getStoragePath(),
+							});
 							return new Response(JSON.stringify({ error: { message } }), {
 								status: 429,
 								headers: { "content-type": "application/json; charset=utf-8" },
