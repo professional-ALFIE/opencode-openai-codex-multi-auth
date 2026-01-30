@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import {
@@ -11,6 +11,7 @@ import {
 	REDIRECT_URI,
 	SCOPE,
 } from '../lib/auth/auth.js';
+import { ProactiveRefreshQueue } from '../lib/refresh-queue.js';
 
 type CallbackFixture = {
 	callbacks: Array<{
@@ -186,6 +187,73 @@ describe('Auth Module', () => {
 			expect(flow1.state).not.toBe(flow2.state);
 			expect(flow1.pkce.verifier).not.toBe(flow2.pkce.verifier);
 			expect(flow1.url).not.toBe(flow2.url);
+		});
+	});
+
+	describe('refresh queue', () => {
+		it('refresh queue skips expired tokens', async () => {
+			const now = 1_000_000;
+			const refreshFn = vi.fn(async () => ({
+				type: 'success' as const,
+				access: 'access',
+				refresh: 'refresh',
+				expires: now + 60_000,
+			}));
+			const queue = new ProactiveRefreshQueue({
+				bufferMs: 60_000,
+				intervalMs: 0,
+				now: () => now,
+			});
+
+			const result = await queue.enqueue({
+				key: 'account-1',
+				expires: now - 1_000,
+				refresh: () => refreshFn(),
+			});
+
+			expect(result.type).toBe('skipped');
+			expect(refreshFn).not.toHaveBeenCalled();
+		});
+
+		it('refresh queue serializes refresh calls', async () => {
+			const now = 1_000_000;
+			let active = 0;
+			let maxActive = 0;
+			const refreshFn = vi.fn(async () => {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				active -= 1;
+				return {
+					type: 'success' as const,
+					access: 'access',
+					refresh: 'refresh',
+					expires: now + 60_000,
+				};
+			});
+			const queue = new ProactiveRefreshQueue({
+				bufferMs: 60_000,
+				intervalMs: 0,
+				now: () => now,
+			});
+
+			const [first, second] = await Promise.all([
+				queue.enqueue({
+					key: 'account-1',
+					expires: now + 1_000,
+					refresh: () => refreshFn(),
+				}),
+				queue.enqueue({
+					key: 'account-2',
+					expires: now + 1_000,
+					refresh: () => refreshFn(),
+				}),
+			]);
+
+			expect(refreshFn).toHaveBeenCalledTimes(2);
+			expect(maxActive).toBe(1);
+			expect(first.type).toBe('success');
+			expect(second.type).toBe('success');
 		});
 	});
 });

@@ -90,6 +90,7 @@ import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";
+import { ProactiveRefreshQueue } from "./lib/refresh-queue.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
@@ -185,6 +186,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const accountId = extractAccountId(token.access);
 		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
 		const plan = extractAccountPlan(token.idToken ?? token.access);
+		if (!accountId || !email || !plan) {
+			debugAuth("[PersistAccount] Missing account identity fields; persisting legacy entry");
+		}
 
 		debugAuth(
 			`[PersistAccount] Account details - accountId: ${accountId}, email: ${email}, plan: ${plan}, existing accounts: ${accounts.length}`,
@@ -274,6 +278,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const pidOffsetEnabled = getPidOffsetEnabled(pluginConfig);
 				const quietMode = getQuietMode(pluginConfig);
 				const tokenRefreshSkewMs = getTokenRefreshSkewMs(pluginConfig);
+				const proactiveRefreshEnabled = (() => {
+					const rawConfig = pluginConfig as Record<string, unknown>;
+					const configFlag = rawConfig["proactive_token_refresh"] ?? rawConfig["proactiveTokenRefresh"];
+					const envFlag = process.env.CODEX_AUTH_PROACTIVE_TOKEN_REFRESH;
+					if (envFlag === "1" || envFlag === "true") return true;
+					if (envFlag === "0" || envFlag === "false") return false;
+					return Boolean(configFlag);
+				})();
 				const toastDebounceMs = getRateLimitToastDebounceMs(pluginConfig);
 				const retryAllAccountsRateLimited = getRetryAllAccountsRateLimited(pluginConfig);
 				const retryAllAccountsMaxWaitMs = getRetryAllAccountsMaxWaitMs(pluginConfig);
@@ -287,6 +299,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const maxBackoffMs = getMaxBackoffMs(pluginConfig);
 				const requestJitterMaxMs = getRequestJitterMaxMs(pluginConfig);
 				const maxCacheFirstWaitMs = Math.max(0, Math.floor(maxCacheFirstWaitSeconds * 1000));
+				const proactiveRefreshQueue = proactiveRefreshEnabled
+					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
+					: null;
 				const rateLimitTracker = new RateLimitTracker({
 					dedupWindowMs: rateLimitDedupWindowMs,
 					resetMs: rateLimitStateResetMs,
@@ -379,37 +394,56 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								attempted.add(account.index);
 
 								let accountAuth = accountManager.toAuthDetails(account);
-								if (shouldRefreshToken(accountAuth, tokenRefreshSkewMs)) {
-								const refreshed = await accountManager.refreshAccountWithFallback(account);
-									if (refreshed.type !== "success") {
-										accountManager.markAccountCoolingDown(
-											account,
-											AUTH_FAILURE_COOLDOWN_MS,
-											"auth-failure",
-										);
-										await accountManager.saveToDisk();
-										await showToast(
-											`Auth refresh failed. Cooling down ${formatAccountLabel(account, account.index)}.`,
-											"warning",
-											quietMode,
-										);
-										continue;
-									}
-
-									accountAuth = {
-										type: "oauth",
+								const tokenExpired = !accountAuth.access || accountAuth.expires <= Date.now();
+								const runRefresh = async (): Promise<TokenResult> => {
+									const refreshed = await accountManager.refreshAccountWithFallback(account);
+									if (refreshed.type !== "success") return refreshed;
+									const refreshedAuth = {
+										type: "oauth" as const,
 										access: refreshed.access,
 										refresh: refreshed.refresh,
 										expires: refreshed.expires,
 									};
-									accountManager.updateFromAuth(account, accountAuth);
+									accountManager.updateFromAuth(account, refreshedAuth);
 									await accountManager.saveToDisk();
-
-									// Keep OpenCode's stored auth aligned with the last-used account.
 									await client.auth.set({
 										path: { id: PROVIDER_ID },
-										body: accountAuth,
+										body: refreshedAuth,
 									});
+									return refreshed;
+								};
+
+								if (shouldRefreshToken(accountAuth, tokenRefreshSkewMs)) {
+									if (proactiveRefreshQueue && !tokenExpired) {
+										void proactiveRefreshQueue.enqueue({
+											key: `account-${account.index}`,
+											expires: accountAuth.expires,
+											refresh: runRefresh,
+										});
+									} else {
+										const refreshed = await runRefresh();
+										if (refreshed.type !== "success") {
+											accountManager.markAccountCoolingDown(
+												account,
+												AUTH_FAILURE_COOLDOWN_MS,
+												"auth-failure",
+											);
+											await accountManager.saveToDisk();
+											await showToast(
+												`Auth refresh failed. Cooling down ${formatAccountLabel(account, account.index)}.`,
+												"warning",
+												quietMode,
+											);
+											continue;
+										}
+
+										accountAuth = {
+											type: "oauth",
+											access: refreshed.access,
+											refresh: refreshed.refresh,
+											expires: refreshed.expires,
+										};
+									}
 								}
 
 								const accountId = account.accountId ?? extractAccountId(accountAuth.access);
