@@ -152,7 +152,8 @@ git commit -m "feat: auto-repair legacy accounts on first send"
 
 **Files:**
 - Modify: `index.ts`
-- Test: `test/auth.test.ts` or `test/helpers` (new helper tests)
+- Add: `lib/formatting.ts`
+- Test: `test/formatting.test.ts`
 
 **Step 1: Write failing tests**
 
@@ -168,23 +169,23 @@ it("formatStatusMessage clamps length", () => {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `npx vitest run test/auth.test.ts`
+Run: `npx vitest run test/formatting.test.ts`
 Expected: FAIL
 
 **Step 3: Write minimal implementation**
 
-- Add message formatting helpers in `index.ts`.
+- Add message formatting helpers in `lib/formatting.ts`.
 - Use them in `showToast` and error-response message generation.
 
 **Step 4: Run tests to verify they pass**
 
-Run: `npx vitest run test/auth.test.ts`
+Run: `npx vitest run test/formatting.test.ts`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add index.ts test/auth.test.ts
+git add index.ts lib/formatting.ts test/formatting.test.ts
 git commit -m "fix: wrap-safe toast and status messages"
 ```
 

@@ -127,6 +127,19 @@ emails per account and multiple accounts per email without collisions.
 
 Security note: this file contains OAuth refresh tokens. Treat it like a password file.
 
+## Account Repair and Quarantine
+
+On login, the plugin inspects the accounts file for corrupt JSON or legacy entries missing
+identity fields. If issues are found, it prompts to repair before continuing.
+
+- Corrupt files are quarantined and replaced with an empty accounts file.
+- Corrupt or unrepairable entries are removed and written to a quarantine file.
+- Auto-repair runs once on the first request if no eligible accounts remain; failures are
+  quarantined and the request retries the next account.
+
+Quarantine files live next to the accounts file with a `.quarantine-<timestamp>.json` suffix
+and include the reason and records.
+
 ## Account Selection Strategies
 
 Configure in `~/.config/opencode/openai-codex-auth-config.json`:

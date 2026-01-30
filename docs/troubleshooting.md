@@ -117,6 +117,20 @@ rm ~/.config/opencode/openai-codex-accounts.json
 opencode auth login
 ```
 
+### Accounts quarantined during repair
+
+**Symptoms:**
+- Login prompt mentions repair and quarantine
+- Toast or CLI output references a `.quarantine-<timestamp>.json` file
+
+**Cause:**
+- The accounts file is corrupt, or legacy entries could not be repaired
+
+**Fix:**
+1. Review the quarantine file to inspect the removed records
+2. Re-run `opencode auth login` to rebuild storage
+3. If you need to restore a record, copy it from the quarantine file and re-authenticate
+
 ### "All account(s) are rate-limited"
 
 **Symptoms:**
