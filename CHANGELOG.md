@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.8] - 2026-01-30
+
+**Republish + CI fix**: `v4.5.7` tag publish failed; this release publishes the same changes and fixes npm OIDC publishing.
+
+### Fixed
+- **Release workflow**: publish uses npm Trusted Publishing (OIDC) and avoids token-based auth.
+
 ## [4.5.7] - 2026-01-30
 
 **Hardening release**: account repair/quarantine UX, safer locking, and better production ergonomics.
