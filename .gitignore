@@ -3,6 +3,7 @@ bun.lockb
 pnpm-lock.yaml
 dist/
 .worktrees/
+docs/plans/
 .DS_Store
 .history/
 opencode.json
