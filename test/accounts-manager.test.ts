@@ -573,6 +573,31 @@ describe("AccountManager", () => {
 		expect(next?.index).toBe(1);
 	});
 
+	it("getMinWaitTimeForFamily ignores disabled accounts", () => {
+		vi.useFakeTimers();
+		try {
+			const storage = createStorage(3);
+			storage.accounts[0] = { ...storage.accounts[0]!, enabled: false };
+			const now = Date.now();
+			storage.accounts[1] = {
+				...storage.accounts[1]!,
+				rateLimitResetTimes: { codex: now + 10_000 },
+			};
+			storage.accounts[2] = {
+				...storage.accounts[2]!,
+				rateLimitResetTimes: { codex: now + 20_000 },
+			};
+			const manager = new AccountManager(
+				createAuth(storage.accounts[0]!.refreshToken),
+				storage,
+			);
+			const waitMs = manager.getMinWaitTimeForFamily(family, null);
+			expect(waitMs).toBe(10_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not duplicate rate-limit keys when model matches family", () => {
 		const manager = new AccountManager(
 			createAuth(fixtureAccounts[0]!.refreshToken),

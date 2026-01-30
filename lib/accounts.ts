@@ -698,7 +698,10 @@ export class AccountManager {
 
 	getMinWaitTimeForFamily(family: ModelFamily, model?: string | null): number {
 		const now = nowMs();
-		const available = this.accounts.filter((a) => {
+		const eligible = this.accounts.filter(
+			(a) => hasCompleteIdentity(a) && isAccountEnabled(a),
+		);
+		const available = eligible.filter((a) => {
 			clearExpiredRateLimits(a);
 			return !isRateLimitedForFamily(a, family, model) && !this.isAccountCoolingDown(a);
 		});
@@ -707,7 +710,7 @@ export class AccountManager {
 		const waitTimes: number[] = [];
 		const baseKey = getQuotaKey(family);
 		const modelKey = model ? getQuotaKey(family, model) : null;
-		for (const account of this.accounts) {
+		for (const account of eligible) {
 			const baseReset = account.rateLimitResetTimes[baseKey];
 			if (typeof baseReset === "number") waitTimes.push(Math.max(0, baseReset - now));
 			if (modelKey) {

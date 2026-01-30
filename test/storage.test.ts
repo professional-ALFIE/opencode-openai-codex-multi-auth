@@ -225,6 +225,39 @@ describe("storage", () => {
 		);
 	});
 
+	it("saveAccounts preserves disabled flag when incoming omits enabled", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+
+		const disabledAccount = { ...accountOne, enabled: false };
+		const existing: AccountStorageV3 = {
+			version: 3,
+			accounts: [disabledAccount],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		writeFileSync(storagePath, JSON.stringify(existing, null, 2), "utf-8");
+
+		const { enabled: _ignored, ...base } = accountOne;
+		const incoming: AccountStorageV3 = {
+			version: 3,
+			accounts: [
+				{
+					...base,
+					refreshToken: `${accountOne.refreshToken}-updated`,
+				},
+			],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		await saveAccounts(incoming);
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts[0]?.enabled).toBe(false);
+	});
+
 	it("saveAccounts maps activeIndex to merged account", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
