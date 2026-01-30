@@ -443,9 +443,50 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							});
 
 						let allRateLimitedRetries = 0;
+						let autoRepairAttempted = false;
 
 						while (true) {
 							const accountCount = accountManager.getAccountCount();
+							if (!autoRepairAttempted && accountCount === 0) {
+								const legacyAccounts = accountManager.getLegacyAccounts();
+								if (legacyAccounts.length > 0) {
+									autoRepairAttempted = true;
+									const repair = await accountManager.repairLegacyAccounts();
+									const snapshot = accountManager.getStorageSnapshot();
+									let quarantinePath: string | null = null;
+									if (repair.quarantined.length > 0) {
+										const quarantinedTokens = new Set(
+											repair.quarantined.map((account) => account.refreshToken),
+										);
+										const quarantineEntries = snapshot.accounts.filter((account) =>
+											quarantinedTokens.has(account.refreshToken),
+										);
+										const quarantineResult = await quarantineAccounts(
+											snapshot,
+											quarantineEntries,
+											"legacy-auto-repair-failed",
+										);
+										quarantinePath = quarantineResult.quarantinePath;
+										accountManager.removeAccountsByRefreshToken(quarantinedTokens);
+									} else {
+										await replaceAccountsFile(snapshot);
+									}
+									if (repair.quarantined.length > 0 && quarantinePath) {
+										await showToast(
+											`Auto-repair failed for ${repair.quarantined.length} account(s). Quarantined: ${quarantinePath}`,
+											"warning",
+											quietMode,
+										);
+									} else if (repair.repaired.length > 0) {
+										await showToast(
+											`Auto-repaired ${repair.repaired.length} account(s).`,
+											"success",
+											quietMode,
+										);
+									}
+									continue;
+								}
+							}
 							const attempted = new Set<number>();
 
 							while (attempted.size < Math.max(1, accountCount)) {

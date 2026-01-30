@@ -464,6 +464,36 @@ export class AccountManager {
 		).length;
 	}
 
+	getLegacyAccounts(): ManagedAccount[] {
+		return this.accounts.filter((account) => {
+			if (account.enabled === false) return false;
+			if (account.enabled === undefined) account.enabled = true;
+			return !hasCompleteIdentity(account);
+		});
+	}
+
+	removeAccountsByRefreshToken(tokens: Set<string>): number {
+		if (tokens.size === 0) return 0;
+		const indexMap = new Map<number, number>();
+		const remaining: ManagedAccount[] = [];
+		for (const account of this.accounts) {
+			if (tokens.has(account.refreshToken)) continue;
+			const newIndex = remaining.length;
+			indexMap.set(account.index, newIndex);
+			remaining.push({ ...account, index: newIndex });
+		}
+		const removedCount = this.accounts.length - remaining.length;
+		this.accounts = remaining;
+		const fallbackIndex = this.accounts.length > 0 ? 0 : -1;
+		this.cursor = indexMap.get(this.cursor) ?? Math.max(0, fallbackIndex);
+		for (const family of MODEL_FAMILIES) {
+			const mapped = indexMap.get(this.currentAccountIndexByFamily[family]);
+			this.currentAccountIndexByFamily[family] = mapped ?? fallbackIndex;
+			if (mapped === undefined) this.sessionOffsetApplied[family] = false;
+		}
+		return removedCount;
+	}
+
 	getAccountsSnapshot(): ManagedAccount[] {
 		return this.accounts.map((a) => ({ ...a, rateLimitResetTimes: { ...a.rateLimitResetTimes } }));
 	}

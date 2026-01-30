@@ -542,6 +542,28 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("getLegacyAccounts ignores disabled accounts", () => {
+		const storage = createStorage(2);
+		storage.accounts[0] = {
+			...storage.accounts[0]!,
+			enabled: false,
+			email: undefined,
+			plan: undefined,
+		};
+		storage.accounts[1] = {
+			...storage.accounts[1]!,
+			email: undefined,
+			plan: undefined,
+		};
+		const manager = new AccountManager(
+			createAuth(storage.accounts[0]!.refreshToken),
+			storage,
+		);
+		const legacy = manager.getLegacyAccounts();
+		expect(legacy).toHaveLength(1);
+		expect(legacy[0]?.refreshToken).toBe(storage.accounts[1]!.refreshToken);
+	});
+
 	it("keeps legacy accounts but skips them for selection", () => {
 		const legacyStorage: AccountStorageV3 = {
 			...fixture,
