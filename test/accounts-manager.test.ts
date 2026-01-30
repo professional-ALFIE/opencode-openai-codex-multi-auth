@@ -16,6 +16,7 @@ import { vi } from "vitest";
 
 import { AccountManager } from "../lib/accounts.js";
 import * as authModule from "../lib/auth/auth.js";
+import { createJwt } from "./helpers/jwt.js";
 import { JWT_CLAIM_PATH } from "../lib/constants.js";
 import { getStoragePath, loadAccounts, saveAccounts } from "../lib/storage.js";
 import type { AccountStorageV3, OAuthAuthDetails } from "../lib/types.js";
@@ -36,11 +37,13 @@ function loadFixture(fileName: string): AccountStorageV3 {
 	) as AccountStorageV3;
 }
 
-function createJwt(claims: Record<string, unknown>): string {
-	const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64");
-	const payload = Buffer.from(JSON.stringify(claims)).toString("base64");
-	return `${header}.${payload}.sig`;
-}
+type HydrationFixture = {
+	tokens: Array<{
+		refreshToken: string;
+		accessPayload: Record<string, unknown>;
+		idPayload: Record<string, unknown>;
+	}>;
+};
 
 const fixture = loadFixture("openai-codex-accounts.json");
 const fixtureAccounts = fixture.accounts;
@@ -247,13 +250,14 @@ describe("AccountManager", () => {
 				"utf-8",
 			);
 
-			const idToken = createJwt({
-				[JWT_CLAIM_PATH]: {
-					chatgpt_account_id: original.accountId,
-					chatgpt_plan_type: original.plan?.toLowerCase(),
-					email: original.email,
-				},
-			});
+			const hydration = JSON.parse(
+				readFileSync(new URL("./fixtures/oauth-hydration.json", import.meta.url), "utf-8"),
+			) as HydrationFixture;
+			const tokenEntry = hydration.tokens.find(
+				(entry) => entry.refreshToken === original.refreshToken,
+			);
+			if (!tokenEntry) throw new Error("Missing hydration fixture");
+			const idToken = createJwt(tokenEntry.idPayload);
 			const refreshSpy = vi
 				.spyOn(authModule, "refreshAccessToken")
 				.mockResolvedValue({

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as authModule from '../lib/auth/auth.js';
 import {
     shouldRefreshToken,
@@ -10,6 +11,25 @@ import {
 } from '../lib/request/fetch-helpers.js';
 import type { Auth } from '../lib/types.js';
 import { URL_PATHS, OPENAI_HEADERS, OPENAI_HEADER_VALUES } from '../lib/constants.js';
+import { createJwt } from './helpers/jwt.js';
+
+type HydrationFixture = {
+	tokens: Array<{
+		refreshToken: string;
+		accessPayload: Record<string, unknown>;
+		idPayload: Record<string, unknown>;
+	}>;
+};
+
+const hydration = JSON.parse(
+	readFileSync(new URL('./fixtures/oauth-hydration.json', import.meta.url), 'utf-8'),
+) as HydrationFixture;
+const primaryToken = hydration.tokens[0]!;
+const secondaryToken = hydration.tokens[1]!;
+const accessToken = createJwt(primaryToken.accessPayload);
+const refreshToken = primaryToken.refreshToken;
+const nextAccessToken = createJwt(secondaryToken.accessPayload);
+const nextRefreshToken = secondaryToken.refreshToken;
 
 describe('Fetch Helpers Module', () => {
 	afterEach(() => {
@@ -23,15 +43,15 @@ describe('Fetch Helpers Module', () => {
 		});
 
 		it('should return true when access token is missing', () => {
-			const auth: Auth = { type: 'oauth', access: '', refresh: 'refresh-token', expires: Date.now() + 1000 };
+			const auth: Auth = { type: 'oauth', access: '', refresh: refreshToken, expires: Date.now() + 1000 };
 			expect(shouldRefreshToken(auth)).toBe(true);
 		});
 
 		it('should return true when token is expired', () => {
 			const auth: Auth = {
 				type: 'oauth',
-				access: 'access-token',
-				refresh: 'refresh-token',
+				access: accessToken,
+				refresh: refreshToken,
 				expires: Date.now() - 1000 // expired
 			};
 			expect(shouldRefreshToken(auth)).toBe(true);
@@ -40,49 +60,52 @@ describe('Fetch Helpers Module', () => {
 		it('should return false for valid oauth token', () => {
 			const auth: Auth = {
 				type: 'oauth',
-				access: 'access-token',
-				refresh: 'refresh-token',
+				access: accessToken,
+				refresh: refreshToken,
 				expires: Date.now() + 10000 // valid for 10 seconds
 			};
 			expect(shouldRefreshToken(auth)).toBe(false);
 		});
 	});
 
-	describe('refreshAndUpdateToken', () => {
-		it('throws when refresh fails', async () => {
-			const auth: Auth = { type: 'oauth', access: 'old', refresh: 'bad', expires: 0 };
-			const client = { auth: { set: vi.fn() } } as any;
-			vi.spyOn(authModule, 'refreshAccessToken').mockResolvedValue({ type: 'failed' } as any);
+		describe('refreshAndUpdateToken', () => {
+			it('throws when refresh fails', async () => {
+				const auth: Auth = { type: 'oauth', access: accessToken, refresh: refreshToken, expires: 0 };
+				const client = { auth: { set: vi.fn() } } as any;
+				vi.spyOn(authModule, 'refreshAccessToken').mockResolvedValue({ type: 'failed' } as any);
 
 			await expect(refreshAndUpdateToken(auth, client)).rejects.toThrow();
 		});
 
-		it('updates stored auth on success', async () => {
-			const auth: Auth = { type: 'oauth', access: 'old', refresh: 'oldr', expires: 0 };
-			const client = { auth: { set: vi.fn() } } as any;
-			vi.spyOn(authModule, 'refreshAccessToken').mockResolvedValue({
-				type: 'success',
-				access: 'new',
-				refresh: 'newr',
-				expires: 123,
-			} as any);
+			it('updates stored auth on success', async () => {
+				const auth: Auth = { type: 'oauth', access: accessToken, refresh: refreshToken, expires: 0 };
+				const client = { auth: { set: vi.fn() } } as any;
+				vi.spyOn(authModule, 'refreshAccessToken').mockResolvedValue({
+					type: 'success',
+					access: nextAccessToken,
+					refresh: nextRefreshToken,
+					expires: 123,
+				} as any);
 
 			const updated = await refreshAndUpdateToken(auth, client);
+			if (updated.type !== 'oauth') {
+				throw new Error('Expected oauth auth');
+			}
 
-			expect(client.auth.set).toHaveBeenCalledWith({
-				path: { id: 'openai' },
-				body: {
-					type: 'oauth',
-					access: 'new',
-					refresh: 'newr',
-					expires: 123,
-				},
+				expect(client.auth.set).toHaveBeenCalledWith({
+					path: { id: 'openai' },
+					body: {
+						type: 'oauth',
+						access: nextAccessToken,
+						refresh: nextRefreshToken,
+						expires: 123,
+					},
+				});
+				expect(updated.access).toBe(nextAccessToken);
+				expect(updated.refresh).toBe(nextRefreshToken);
+				expect(updated.expires).toBe(123);
 			});
-			expect(updated.access).toBe('new');
-			expect(updated.refresh).toBe('newr');
-			expect(updated.expires).toBe(123);
 		});
-	});
 
 	describe('extractRequestUrl', () => {
 		it('should extract URL from string', () => {
@@ -120,8 +143,10 @@ describe('Fetch Helpers Module', () => {
 	});
 
 		describe('createCodexHeaders', () => {
-	const accountId = 'test-account-123';
-	const accessToken = 'test-access-token';
+		const fixture = JSON.parse(
+			readFileSync(new URL('./fixtures/openai-codex-accounts.json', import.meta.url), 'utf-8'),
+		) as { accounts: Array<{ accountId: string }> };
+		const accountId = fixture.accounts[0]!.accountId;
 
 		it('should create headers with all required fields when cache key provided', () => {
 	    const headers = createCodexHeaders(undefined, accountId, accessToken, { model: 'gpt-5-codex', promptCacheKey: 'session-1' });

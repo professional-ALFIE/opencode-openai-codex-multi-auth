@@ -12,6 +12,7 @@ import {
 	SCOPE,
 } from '../lib/auth/auth.js';
 import { ProactiveRefreshQueue } from '../lib/refresh-queue.js';
+import { createJwt } from './helpers/jwt.js';
 
 type CallbackFixture = {
 	callbacks: Array<{
@@ -32,6 +33,14 @@ type AccountsFixture = {
 		accountId: string;
 		email: string;
 		plan: string;
+	}>;
+};
+
+type HydrationFixture = {
+	tokens: Array<{
+		refreshToken: string;
+		accessPayload: Record<string, unknown>;
+		idPayload: Record<string, unknown>;
 	}>;
 };
 
@@ -122,15 +131,15 @@ describe('Auth Module', () => {
 		});
 
 		it('should decode JWT with ChatGPT account info', () => {
-			const payload = Buffer.from(JSON.stringify({
-				'https://api.openai.com/auth': {
-					chatgpt_account_id: 'account-123',
-				},
-			})).toString('base64');
-			const token = `header.${payload}.signature`;
+			const hydration = loadFixture<HydrationFixture>('oauth-hydration.json');
+			const accessPayload = hydration.tokens[0]!.accessPayload;
+			const token = createJwt(accessPayload);
+			const accountId =
+				(accessPayload['https://api.openai.com/auth'] as { chatgpt_account_id?: string })
+					?.chatgpt_account_id ?? null;
 
 			const decoded = decodeJWT(token);
-			expect(decoded?.['https://api.openai.com/auth']?.chatgpt_account_id).toBe('account-123');
+			expect(decoded?.['https://api.openai.com/auth']?.chatgpt_account_id).toBe(accountId);
 		});
 
 		it('should return null for invalid JWT', () => {

@@ -25,9 +25,9 @@ describe("account matching", () => {
 
 	it("does not match when email differs", () => {
 		const index = findAccountMatchIndex(accounts, {
-			accountId: accountTwo.accountId,
-			plan: accountTwo.plan,
-			email: "other@example.com",
+			accountId: accountOne.accountId,
+			plan: accountOne.plan,
+			email: accountThree.email,
 		});
 		expect(index).toBe(-1);
 	});

@@ -1,0 +1,97 @@
+{
+  "tokens": [
+    {
+      "refreshToken": "rt_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0.u1V2w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9N0",
+      "accessPayload": {
+        "aud": ["https://api.openai.com/v1"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551000,
+        "exp": 1769554600,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+          "chatgpt_plan_type": "plus",
+          "email": "user.one@example.com"
+        },
+        "https://api.openai.com/profile": {
+          "email": "user.one@example.com",
+          "email_verified": true
+        }
+      },
+      "idPayload": {
+        "aud": ["app_EMoamEEZ73f0CkXaXp7hrann"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551000,
+        "exp": 1769554600,
+        "email": "user.one@example.com",
+        "email_verified": true,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+          "chatgpt_plan_type": "plus",
+          "email": "user.one@example.com"
+        }
+      }
+    },
+    {
+      "refreshToken": "rt_B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1.v2W3x4Y5z6A7b8C9d0E1f2G3h4I5j6K7l8M9n0",
+      "accessPayload": {
+        "aud": ["https://api.openai.com/v1"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551100,
+        "exp": 1769554700,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+          "chatgpt_plan_type": "team",
+          "email": "user.one@example.com"
+        },
+        "https://api.openai.com/profile": {
+          "email": "user.one@example.com",
+          "email_verified": true
+        }
+      },
+      "idPayload": {
+        "aud": ["app_EMoamEEZ73f0CkXaXp7hrann"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551100,
+        "exp": 1769554700,
+        "email": "user.one@example.com",
+        "email_verified": true,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+          "chatgpt_plan_type": "team",
+          "email": "user.one@example.com"
+        }
+      }
+    },
+    {
+      "refreshToken": "rt_C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2.w3X4y5Z6a7B8c9D0e1F2g3H4i5J6k7L8m9N0q1",
+      "accessPayload": {
+        "aud": ["https://api.openai.com/v1"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551200,
+        "exp": 1769554800,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+          "chatgpt_plan_type": "team",
+          "email": "user.two@example.com"
+        },
+        "https://api.openai.com/profile": {
+          "email": "user.two@example.com",
+          "email_verified": true
+        }
+      },
+      "idPayload": {
+        "aud": ["app_EMoamEEZ73f0CkXaXp7hrann"],
+        "iss": "https://auth.openai.com",
+        "iat": 1769551200,
+        "exp": 1769554800,
+        "email": "user.two@example.com",
+        "email_verified": true,
+        "https://api.openai.com/auth": {
+          "chatgpt_account_id": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+          "chatgpt_plan_type": "team",
+          "email": "user.two@example.com"
+        }
+      }
+    }
+  ]
+}
