@@ -4,24 +4,111 @@ All notable changes to this project are documented here. Dates use the ISO forma
 
 ## [4.5.6] - 2026-01-29
 
-**Multi-account parity release**: stricter identity, account management, and hydration/refresh reliability.
+**Multi-account parity release**: strict identity, account management, and refresh/hydration reliability.
 
 ### Added
 - **Account management**: `opencode auth login` now offers manage mode to enable/disable accounts; storage persists `enabled`.
-- **Background refresh**: proactive refresh scheduler can refresh tokens ahead of expiry (config-flagged).
+- **Background refresh**: proactive refresh queue/scheduler can refresh tokens ahead of expiry (config-flagged).
+- **Multi-account stability**: locking/rotation hardening under load.
 
 ### Changed
 - **Strict identity matching**: accounts match on `accountId` + `email` + `plan`.
-- **Hydration behavior**: fills missing email/accountId/plan from id/access tokens, throttled and skips disabled accounts.
+- **Legacy hydration**: refresh-based hydration fills missing email/accountId/plan, throttled and skips disabled accounts.
+- **Wait-time calculation**: hydrates legacy identities before wait-time checks and ignores disabled accounts.
 - **Rate-limit backoff**: exponential backoff replaces linear retry scaling.
-- **Wait-time calculation**: ignores disabled/legacy accounts and hydrates legacy identities before wait-time checks.
 
 ### Fixed
-- **Disabled account safety**: disabled accounts never auto re-enable and are excluded from hydration.
-- **Legacy plan hydration**: plan-only legacy records now hydrate via refresh tokens.
+- **Refresh token safety**: lock refresh usage and retry when disk updates occur.
+- **Active index remap**: active indices remap after refresh token dedupe.
+- **Legacy identity hydration**: plan-only records hydrate via refresh tokens; access-token claims used when id token lacks claims.
+- **Disabled account safety**: disabled accounts are excluded from hydration and wait-time calculations.
+
+### Tests
+- **Fixtures/JWTs**: align account fixtures and JWT payloads; add hydration fallback coverage.
+- **Config defaults**: sync plugin config default tests.
 
 ### Documentation
 - **Multi-account docs**: updated manage flow, identity rules, and storage fields.
+
+## [4.5.5] - 2026-01-28
+
+**Release metadata**: version bump only (no functional changes).
+
+### Changed
+- Release/tag metadata only.
+
+## [4.5.4] - 2026-01-28
+
+**Bugfix release**: avoid plan collision during auth fallback hydration.
+
+### Fixed
+- **Hydration fallback**: avoid plan collisions when hydrating auth fallback.
+
+### Changed
+- **Repo hygiene**: removed AGENTS doc from repo.
+
+## [4.5.3] - 2026-01-28
+
+**Bugfix + tooling release**: migrate plugin paths and protect account saves.
+
+### Added
+- **Release automation**: auto-tag release workflow.
+
+### Fixed
+- **Plugin path migration**: migrate plugin paths and protect account saves.
+
+## [4.5.2] - 2026-01-27
+
+**Bugfix release**: match accounts by plan and render OAuth version.
+
+### Fixed
+- **Account matching**: include plan to prevent overwrites.
+- **OAuth success banner**: render OAuth version on success page.
+
+## [4.5.1] - 2026-01-27
+
+**Bugfix release**: atomic account saves and rate-limit key dedupe.
+
+### Fixed
+- **Storage**: account saves are atomic.
+- **Rate-limit keys**: dedupe per-family/model keys.
+
+## [4.5.0] - 2026-01-27
+
+**Feature release**: align login UX and capture plan info.
+
+### Added
+- **Plan capture**: store ChatGPT plan from OAuth JWT.
+
+### Changed
+- **Login UX**: align OpenAI login flow with antigravity UX.
+
+## [4.4.9] - 2026-01-27
+
+**Bugfix release**: safer installer plugin removal.
+
+### Fixed
+- **Installer plugin removal**: avoid substring collisions when removing plugin entries.
+
+## [4.4.8] - 2026-01-27
+
+**Bugfix release**: installer consistency improvements.
+
+### Fixed
+- **Installer pinning**: keep plugin at `@latest` during install/updates.
+
+### Changed
+- **Repo hygiene**: ignore local `BUG_FIXES` notes.
+
+## [4.4.7] - 2026-01-25
+
+**Security release**: patch JWT middleware vulnerability.
+
+### Fixed
+- **Security**: `hono` JWT middleware vulnerability resolved (audit fix).
+
+### Changed
+- **Repo hygiene**: ignore local third-account test script.
 
 ## [4.4.6] - 2026-01-25
 
