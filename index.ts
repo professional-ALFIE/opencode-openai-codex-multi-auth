@@ -88,9 +88,20 @@ import {
 	promptLoginMode,
 	promptManageAccounts,
 	promptOAuthCallbackValue,
+	promptRepairAccounts,
 } from "./lib/cli.js";
 import { withTerminalModeRestored } from "./lib/terminal.js";
-import { getStoragePath, loadAccounts, saveAccounts, toggleAccountEnabled } from "./lib/storage.js";
+import {
+	getStoragePath,
+	inspectAccountsFile,
+	loadAccounts,
+	quarantineAccounts,
+	quarantineCorruptFile,
+	replaceAccountsFile,
+	saveAccounts,
+	toggleAccountEnabled,
+	writeQuarantineFile,
+} from "./lib/storage.js";
 import { findAccountMatchIndex } from "./lib/account-matching.js";
 import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/codex.js";
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
@@ -690,6 +701,87 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const pluginConfig = loadPluginConfig();
 					const quietMode = getQuietMode(pluginConfig);
 					const isCliFlow = Boolean(inputs);
+					const notifyRepairResult = async (message: string) => {
+						if (isCliFlow) {
+							console.log(`\n${message}\n`);
+							return;
+						}
+						await showToast(message, "info", quietMode);
+					};
+					const maybeRepairAccounts = async (): Promise<AccountStorageV3 | null> => {
+						const inspection = await inspectAccountsFile();
+						if (inspection.status === "missing" || inspection.status === "ok") {
+							return null;
+						}
+						const corruptCount =
+							inspection.status === "corrupt-file"
+								? 1
+								: inspection.corruptEntries.length;
+						const legacyCount =
+							inspection.status === "needs-repair" ? inspection.legacyEntries.length : 0;
+						const shouldRepair = await promptRepairAccounts({
+							legacyCount,
+							corruptCount,
+						});
+						if (!shouldRepair) return null;
+
+						const quarantinePaths: string[] = [];
+						if (inspection.status === "corrupt-file") {
+							const quarantinePath = await quarantineCorruptFile();
+							if (quarantinePath) {
+								quarantinePaths.push(quarantinePath);
+								await notifyRepairResult(
+									`Accounts file was corrupted. Quarantined to ${quarantinePath}.`,
+								);
+							}
+							return await loadAccounts();
+						}
+
+						if (inspection.corruptEntries.length > 0) {
+							const quarantinePath = await writeQuarantineFile(
+								inspection.corruptEntries,
+								"corrupt-entry",
+							);
+							quarantinePaths.push(quarantinePath);
+						}
+
+						const storage = await loadAccounts();
+						if (!storage) {
+							await notifyRepairResult("Repair skipped: no valid accounts found.");
+							return null;
+						}
+						const manager = new AccountManager(undefined, storage);
+						const repair = await manager.repairLegacyAccounts();
+						const snapshot = manager.getStorageSnapshot();
+						let updatedStorage = snapshot;
+						if (repair.quarantined.length > 0) {
+							const quarantinedTokens = new Set(
+								repair.quarantined.map((account) => account.refreshToken),
+							);
+							const quarantineEntries = snapshot.accounts.filter((account) =>
+								quarantinedTokens.has(account.refreshToken),
+							);
+							const quarantineResult = await quarantineAccounts(
+								snapshot,
+								quarantineEntries,
+								"legacy-repair-failed",
+							);
+							updatedStorage = quarantineResult.storage;
+							quarantinePaths.push(quarantineResult.quarantinePath);
+						} else {
+							await replaceAccountsFile(snapshot);
+						}
+						const summaryParts = [
+							`Repaired ${repair.repaired.length}`,
+							`quarantined ${repair.quarantined.length}`,
+						];
+						const detail = quarantinePaths.length
+							? ` Quarantine: ${quarantinePaths.join(", ")}.`
+							: "";
+						await notifyRepairResult(`Account repair complete. ${summaryParts.join(", ")}.${detail}`);
+						return updatedStorage;
+					};
+					const repairedStorage = await maybeRepairAccounts();
 
 					// CLI flow (`opencode auth login`) passes inputs; TUI does not.
 					if (isCliFlow) {
@@ -737,9 +829,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								return await exchangeAuthorizationCode(result.code, pkce.verifier, REDIRECT_URI);
 							};
 
-							const authenticated: TokenOk[] = [];
-							let startFresh = true;
-							let existingStorage = await loadAccounts();
+						const authenticated: TokenOk[] = [];
+						let startFresh = true;
+						let existingStorage = repairedStorage ?? (await loadAccounts());
 							if (existingStorage && existingStorage.accounts.length > 0) {
 						const needsHydration = needsIdentityHydration(existingStorage.accounts);
 								if (needsHydration) {
@@ -864,7 +956,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							process.env.OPENCODE_HEADLESS,
 					);
 					const useManualFlow = isHeadless || process.env.OPENCODE_NO_BROWSER === "1";
-					const existingStorage = await loadAccounts();
+					const existingStorage = repairedStorage ?? (await loadAccounts());
 					const existingCount = existingStorage?.accounts.length ?? 0;
 
 					const { pkce, state, url } = await createAuthorizationFlow();

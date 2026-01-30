@@ -80,6 +80,31 @@ export async function promptManageAccounts(
 	});
 }
 
+export async function promptRepairAccounts(details: {
+	legacyCount: number;
+	corruptCount: number;
+}): Promise<boolean> {
+	return await withTerminalModeRestored(async () => {
+		const rl = createInterface({ input: stdin, output: stdout });
+		try {
+			const parts: string[] = [];
+			if (details.legacyCount > 0) {
+				parts.push(`${details.legacyCount} legacy account(s)`);
+			}
+			if (details.corruptCount > 0) {
+				parts.push(`${details.corruptCount} corrupt entr${details.corruptCount === 1 ? "y" : "ies"}`);
+			}
+			const summary = parts.length > 0 ? parts.join(" and ") : "issues";
+			const answer = await rl.question(
+				`Detected ${summary}. Repair now? [y/N]: `,
+			);
+			return answer.trim().toLowerCase().startsWith("y");
+		} finally {
+			rl.close();
+		}
+	});
+}
+
 export async function promptAddAnotherAccount(
 	currentCount: number,
 	maxAccounts: number,

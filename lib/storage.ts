@@ -662,6 +662,27 @@ export async function writeQuarantineFile(
 	return quarantinePath;
 }
 
+export async function replaceAccountsFile(storage: AccountStorageV3): Promise<void> {
+	await writeAccountsFile(storage);
+}
+
+export async function quarantineCorruptFile(): Promise<string | null> {
+	const filePath = getStoragePath();
+	if (!existsSync(filePath)) return null;
+	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
+	await withFileLock(filePath, async () => {
+		if (!existsSync(filePath)) return;
+		await fs.copyFile(filePath, quarantinePath);
+	});
+	await writeAccountsFile({
+		version: 3,
+		accounts: [],
+		activeIndex: 0,
+		activeIndexByFamily: {},
+	});
+	return quarantinePath;
+}
+
 export async function quarantineAccounts(
 	storage: AccountStorageV3,
 	entries: AccountRecord[],

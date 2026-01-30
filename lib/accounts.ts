@@ -712,6 +712,47 @@ export class AccountManager {
 		}
 	}
 
+	async repairLegacyAccounts(): Promise<{
+		repaired: ManagedAccount[];
+		quarantined: ManagedAccount[];
+	}> {
+		const repaired: ManagedAccount[] = [];
+		const quarantined: ManagedAccount[] = [];
+		for (const account of this.accounts) {
+			if (account.enabled === false) continue;
+			if (account.enabled === undefined) account.enabled = true;
+			if (hasCompleteIdentity(account)) continue;
+			try {
+				const refreshed = await this.refreshAccountWithLock(account);
+				if (refreshed.type !== "success") {
+					quarantined.push(account);
+					continue;
+				}
+				const idToken = refreshed.idToken;
+				const accessToken = refreshed.access;
+				const accountId =
+					extractAccountId(idToken) ?? extractAccountId(accessToken) ?? account.accountId;
+				const email =
+					sanitizeEmail(extractAccountEmail(idToken)) ??
+					sanitizeEmail(extractAccountEmail(accessToken)) ??
+					account.email;
+				const plan = extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
+				if (!accountId || !email || !plan) {
+					quarantined.push(account);
+					continue;
+				}
+				account.accountId = accountId;
+				account.email = email;
+				account.plan = plan;
+				account.refreshToken = refreshed.refresh;
+				repaired.push(account);
+			} catch {
+				quarantined.push(account);
+			}
+		}
+		return { repaired, quarantined };
+	}
+
 	async getMinWaitTimeForFamilyWithHydration(
 		family: ModelFamily,
 		model?: string | null,
@@ -813,6 +854,28 @@ export class AccountManager {
 	}
 
 	async saveToDisk(): Promise<void> {
+		const snapshot = this.getStorageSnapshot();
+		let accountsToSave: AccountStorageV3["accounts"] = snapshot.accounts;
+		try {
+			const latest = await loadAccounts();
+			if (latest?.accounts && latest.accounts.length > 0) {
+				accountsToSave = mergeAccountRecords(latest.accounts, snapshot.accounts);
+			}
+		} catch {
+			accountsToSave = snapshot.accounts;
+		}
+
+		const storage: AccountStorageV3 = {
+			version: 3,
+			accounts: accountsToSave,
+			activeIndex: Math.min(snapshot.activeIndex, Math.max(0, accountsToSave.length - 1)),
+			activeIndexByFamily: snapshot.activeIndexByFamily,
+		};
+
+		await saveAccounts(storage);
+	}
+
+	getStorageSnapshot(): AccountStorageV3 {
 		const activeIndexByFamily: Partial<Record<string, number>> = {};
 		for (const family of MODEL_FAMILIES) {
 			activeIndexByFamily[family] = clampNonNegativeInt(
@@ -838,24 +901,12 @@ export class AccountManager {
 			cooldownReason: a.cooldownReason,
 		}));
 
-		let accountsToSave: AccountStorageV3["accounts"] = snapshot;
-		try {
-			const latest = await loadAccounts();
-			if (latest?.accounts && latest.accounts.length > 0) {
-				accountsToSave = mergeAccountRecords(latest.accounts, snapshot);
-			}
-		} catch {
-			accountsToSave = snapshot;
-		}
-
-		const storage: AccountStorageV3 = {
+		return {
 			version: 3,
-			accounts: accountsToSave,
-			activeIndex: Math.min(activeIndex, Math.max(0, accountsToSave.length - 1)),
+			accounts: snapshot,
+			activeIndex: Math.min(activeIndex, Math.max(0, snapshot.length - 1)),
 			activeIndexByFamily,
 		};
-
-		await saveAccounts(storage);
 	}
 }
 

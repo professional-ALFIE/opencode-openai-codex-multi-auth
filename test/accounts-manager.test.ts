@@ -476,6 +476,72 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("repairLegacyAccounts quarantines failures", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const base = seedStorageFromBackup(root);
+			const legacy = {
+				...base.accounts[0]!,
+				plan: undefined,
+			};
+			const storage: AccountStorageV3 = {
+				...base,
+				accounts: [legacy, ...base.accounts.slice(1)],
+			};
+			vi.spyOn(authModule, "refreshAccessToken").mockResolvedValue({ type: "failed" });
+
+			const manager = new AccountManager(undefined, storage);
+			const result = await manager.repairLegacyAccounts();
+
+			expect(result.repaired).toHaveLength(0);
+			expect(result.quarantined).toHaveLength(1);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("repairLegacyAccounts fills missing identity", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const base = seedStorageFromBackup(root);
+			const original = base.accounts[0]!;
+			const legacy = {
+				...original,
+				plan: undefined,
+			};
+			const storage: AccountStorageV3 = {
+				...base,
+				accounts: [legacy, ...base.accounts.slice(1)],
+			};
+			const hydration = JSON.parse(
+				readFileSync(new URL("./fixtures/oauth-hydration.json", import.meta.url), "utf-8"),
+			) as HydrationFixture;
+			const tokenEntry = hydration.tokens.find(
+				(entry) => entry.refreshToken === original.refreshToken,
+			);
+			if (!tokenEntry) throw new Error("Missing hydration fixture");
+			const idToken = createJwt(tokenEntry.idPayload);
+			vi.spyOn(authModule, "refreshAccessToken").mockResolvedValue({
+				type: "success",
+				access: "access",
+				refresh: `${original.refreshToken}-new`,
+				expires: Date.now() + 60_000,
+				idToken,
+			});
+
+			const manager = new AccountManager(undefined, storage);
+			const result = await manager.repairLegacyAccounts();
+
+			expect(result.repaired).toHaveLength(1);
+			expect(result.quarantined).toHaveLength(0);
+			expect(result.repaired[0]?.plan).toBe(original.plan);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("keeps legacy accounts but skips them for selection", () => {
 		const legacyStorage: AccountStorageV3 = {
 			...fixture,
