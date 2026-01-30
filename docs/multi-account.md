@@ -65,6 +65,7 @@ The plugin exposes a few OpenCode tools to inspect or switch accounts:
 
 - `openai-accounts` - list accounts and status
 - `openai-accounts-switch` - switch active account by index (1-based)
+- `openai-accounts-toggle` - enable/disable account by index (1-based)
 
 These are primarily useful in the OpenCode TUI.
 To enable or disable accounts, re-run `opencode auth login` and choose **manage**.
@@ -139,6 +140,10 @@ identity fields. If issues are found, it prompts to repair before continuing.
 
 Quarantine files live next to the accounts file with a `.quarantine-<timestamp>.json` suffix
 and include the reason and records.
+
+Quarantine files contain refresh tokens (treat them like passwords). The plugin writes them with
+restrictive permissions when supported, and keeps only the most recent set (older quarantine files
+may be pruned automatically).
 
 ## Account Selection Strategies
 

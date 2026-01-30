@@ -132,6 +132,10 @@ opencode auth login
 2. Re-run `opencode auth login` to rebuild storage
 3. If you need to restore a record, copy it from the quarantine file and re-authenticate
 
+**Notes:**
+- Quarantine files contain refresh tokens (treat them like passwords).
+- Older quarantine files may be pruned automatically to avoid unbounded buildup.
+
 ### "All account(s) are rate-limited"
 
 **Symptoms:**
