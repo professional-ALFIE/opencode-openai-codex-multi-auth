@@ -183,6 +183,36 @@ describe("AccountManager", () => {
 		expect(second.type).toBe("success");
 	});
 
+	it("refreshAccountWithLock skips disabled accounts", async () => {
+		const fixture = loadFixture("openai-codex-accounts.json");
+		const accountOne = { ...fixture.accounts[0]!, enabled: false };
+		const storage: AccountStorageV3 = { ...fixture, accounts: [accountOne] };
+		const manager = new AccountManager(createAuth(accountOne.refreshToken), storage);
+		const account = manager.getAccountByIndex(0);
+		if (!account) throw new Error("Expected account");
+		account.enabled = false;
+
+		const refreshFn = vi.fn(async () => ({ type: "success" as const, access: "a", refresh: "r", expires: Date.now() + 60_000 }));
+		const result = await manager.refreshAccountWithLock(account, refreshFn);
+		expect(refreshFn).not.toHaveBeenCalled();
+		expect(result.type).toBe("failed");
+	});
+
+	it("refreshAccountWithFallback skips disabled accounts", async () => {
+		const fixture = loadFixture("openai-codex-accounts.json");
+		const accountOne = { ...fixture.accounts[0]!, enabled: false };
+		const storage: AccountStorageV3 = { ...fixture, accounts: [accountOne] };
+		const manager = new AccountManager(createAuth(accountOne.refreshToken), storage);
+		const account = manager.getAccountByIndex(0);
+		if (!account) throw new Error("Expected account");
+		account.enabled = false;
+
+		const refreshFn = vi.fn(async () => ({ type: "success" as const, access: "a", refresh: "r", expires: Date.now() + 60_000 }));
+		const result = await manager.refreshAccountWithFallback(account, refreshFn);
+		expect(refreshFn).not.toHaveBeenCalled();
+		expect(result.type).toBe("failed");
+	});
+
 	it("retries refresh when disk has newer token", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;

@@ -842,6 +842,7 @@ export class AccountManager {
 		account: ManagedAccount,
 		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
 	): Promise<TokenResult> {
+		if (account.enabled === false) return { type: "failed" };
 		const existing = this.refreshInFlight.get(account.index);
 		if (existing) return existing;
 
@@ -861,6 +862,7 @@ export class AccountManager {
 		account: ManagedAccount,
 		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
 	): Promise<TokenResult> {
+		if (account.enabled === false) return { type: "failed" };
 		const first = await this.refreshAccountWithLock(account, refreshFn);
 		if (first.type === "success") return first;
 

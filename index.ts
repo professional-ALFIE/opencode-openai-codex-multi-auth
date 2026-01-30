@@ -356,13 +356,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								refresh: () => Promise<TokenResult>;
 							}>;
 							for (const account of accountManager.getAccountsSnapshot()) {
+								if (account.enabled === false) continue;
 								if (!Number.isFinite(account.expires)) continue;
 								tasks.push({
 									key: `account-${account.index}`,
 									expires: account.expires ?? 0,
 									refresh: async () => {
 										const live = accountManager.getAccountByIndex(account.index);
-										if (!live) return { type: "failed" } as TokenResult;
+										if (!live || live.enabled === false) return { type: "failed" } as TokenResult;
 										const refreshed = await accountManager.refreshAccountWithFallback(live);
 										if (refreshed.type !== "success") return refreshed;
 										const refreshedAuth = {

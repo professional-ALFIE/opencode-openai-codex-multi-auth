@@ -399,6 +399,120 @@ describe("storage", () => {
 		lockSpy.mockRestore();
 	});
 
+	it("saveAccounts does not re-lock during legacy migration", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		mkdirSync(join(root, ".opencode"), { recursive: true });
+		const legacyPath = join(root, ".opencode", "openai-codex-accounts.json");
+		writeFileSync(
+			legacyPath,
+			JSON.stringify({ version: 3, accounts: [{ ...accountOne }], activeIndex: 0 }, null, 2),
+			"utf-8",
+		);
+
+		vi.resetModules();
+		vi.doMock("node:os", async () => {
+			const actual = await vi.importActual<typeof import("node:os")>("node:os");
+			return { ...actual, homedir: () => root };
+		});
+		try {
+			const storageModule = await import("../lib/storage.js");
+			const storagePath = storageModule.getStoragePath();
+			const storage = loadFixture("openai-codex-accounts.json");
+			let heldLocks = 0;
+			let nestedAttempt = false;
+			const lockSpy = vi.spyOn(lockfile, "lock").mockImplementation(async (path) => {
+				expect(path).toBe(storagePath);
+				heldLocks += 1;
+				if (heldLocks > 1) nestedAttempt = true;
+				return async () => {
+					heldLocks -= 1;
+				};
+			});
+			try {
+				await storageModule.saveAccounts(storage);
+				expect(nestedAttempt).toBe(false);
+				expect(lockSpy).toHaveBeenCalledTimes(1);
+			} finally {
+				lockSpy.mockRestore();
+			}
+		} finally {
+			vi.doUnmock("node:os");
+		}
+	});
+
+	it("saveAccounts ensures file exists before locking", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		// Do not create the storage file upfront.
+		const storage = loadFixture("openai-codex-accounts.json");
+		const lockSpy = vi.spyOn(lockfile, "lock").mockImplementation(async (path) => {
+			expect(path).toBe(storagePath);
+			expect(existsSync(path)).toBe(true);
+			return async () => undefined;
+		});
+		try {
+			await saveAccounts(storage);
+			expect(lockSpy).toHaveBeenCalled();
+		} finally {
+			lockSpy.mockRestore();
+		}
+	});
+
+	it("saveAccounts cleans up temp file on rename failure", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		const storage = loadFixture("openai-codex-accounts.json");
+		const renameSpy = vi
+			.spyOn(fsPromises, "rename")
+			.mockRejectedValueOnce(new Error("rename failed"));
+		try {
+			await expect(saveAccounts(storage)).rejects.toThrow("rename failed");
+			const tmpFiles = readdirSync(join(root, "opencode")).filter((name) => name.endsWith(".tmp"));
+			expect(tmpFiles).toEqual([]);
+		} finally {
+			renameSpy.mockRestore();
+		}
+	});
+
+	it("loadAccounts migration locks the storage file path", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		const originalHome = process.env.HOME;
+		process.env.XDG_CONFIG_HOME = root;
+		process.env.HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		mkdirSync(join(root, ".opencode"), { recursive: true });
+
+		const storagePath = getStoragePath();
+		const legacyPath = join(root, ".opencode", "openai-codex-accounts.json");
+		seedStorageFromBackup(storagePath);
+		writeFileSync(
+			legacyPath,
+			JSON.stringify({ version: 3, accounts: [{ ...accountOne }], activeIndex: 0 }, null, 2),
+			"utf-8",
+		);
+		const lockSpy = vi.spyOn(lockfile, "lock").mockImplementation(async (path) => {
+			expect(existsSync(path)).toBe(true);
+			return async () => undefined;
+		});
+		try {
+			await loadAccounts();
+			expect(lockSpy).toHaveBeenCalled();
+			// Should lock the new storage path when migrating.
+			expect(lockSpy.mock.calls.some((call) => call[0] === storagePath)).toBe(true);
+		} finally {
+			lockSpy.mockRestore();
+			process.env.HOME = originalHome;
+		}
+	});
+
 	it("toggleAccountEnabled flips enabled state", () => {
 		const storage: AccountStorageV3 = {
 			version: 3,
@@ -524,12 +638,26 @@ describe("storage", () => {
 		process.env.XDG_CONFIG_HOME = root;
 		mkdirSync(join(root, "opencode"), { recursive: true });
 		const storagePath = getStoragePath();
+		for (let i = 0; i < 30; i++) {
+			writeFileSync(`${storagePath}.quarantine-${1000 + i}.json`, "{}", "utf-8");
+		}
 		writeFileSync(storagePath, "{", "utf-8");
+		if (process.platform !== "win32") {
+			await fsPromises.chmod(storagePath, 0o644);
+		}
 
 		const quarantinePath = await autoQuarantineCorruptAccountsFile();
 		expect(quarantinePath).toBeTruthy();
 		if (!quarantinePath) return;
 		expect(readFileSync(quarantinePath, "utf-8")).toBe("{");
+		if (process.platform !== "win32") {
+			const stat = await fsPromises.stat(quarantinePath);
+			expect(stat.mode & 0o777).toBe(0o600);
+		}
+		const quarantineFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.quarantine-"),
+		);
+		expect(quarantineFiles.length).toBeLessThanOrEqual(20);
 		const after = JSON.parse(readFileSync(storagePath, "utf-8")) as { accounts?: unknown[] };
 		expect(after.accounts).toEqual([]);
 	});

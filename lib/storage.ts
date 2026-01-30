@@ -119,9 +119,24 @@ const LOCK_OPTIONS = {
 	realpath: false,
 };
 
+async function ensureFileExists(path: string): Promise<void> {
+	if (existsSync(path)) return;
+	await fs.mkdir(dirname(path), { recursive: true });
+	await fs.writeFile(
+		path,
+		JSON.stringify(
+			{ version: 3, accounts: [], activeIndex: 0, activeIndexByFamily: {} },
+			null,
+			2,
+		),
+		"utf-8",
+	);
+}
+
 async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
 	let release: (() => Promise<void>) | null = null;
 	try {
+		await ensureFileExists(path).catch(() => undefined);
 		release = await lockfile.lock(path, LOCK_OPTIONS);
 		return await fn();
 	} finally {
@@ -507,26 +522,17 @@ function mergeAccountStorage(
 async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
 	const newPath = getStoragePath();
 	const legacyPath = getLegacyStoragePath();
-	const newExists = existsSync(newPath);
-	const legacyExists = existsSync(legacyPath);
+	if (!existsSync(legacyPath)) return;
+	await withFileLock(newPath, async () => {
+		await migrateLegacyAccountsFileIfNeededLocked(newPath, legacyPath);
+	});
+}
 
-	if (!legacyExists) return;
-
-	if (!newExists) {
-		await fs.mkdir(dirname(newPath), { recursive: true });
-		try {
-			await fs.rename(legacyPath, newPath);
-		} catch {
-			try {
-				await fs.copyFile(legacyPath, newPath);
-				await fs.unlink(legacyPath);
-			} catch {
-				// Best-effort; ignore.
-			}
-		}
-		return;
-	}
-
+async function migrateLegacyAccountsFileIfNeededLocked(
+	newPath: string,
+	legacyPath: string,
+): Promise<void> {
+	if (!existsSync(legacyPath)) return;
 	try {
 		const [newRaw, legacyRaw] = await Promise.all([
 			fs.readFile(newPath, "utf-8"),
@@ -540,6 +546,11 @@ async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
 		if (!newStorage) {
 			debug("[StorageMigration] New storage invalid, adopting legacy accounts");
 			await fs.writeFile(newPath, JSON.stringify(legacyStorage, null, 2), "utf-8");
+			try {
+				await fs.unlink(legacyPath);
+			} catch {
+				// Best-effort; ignore.
+			}
 			return;
 		}
 
@@ -579,6 +590,16 @@ async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
 		}
 	} catch {
 		// Best-effort; ignore.
+	}
+}
+
+async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | null> {
+	try {
+		const raw = await fs.readFile(filePath, "utf-8");
+		const parsed = JSON.parse(raw) as unknown;
+		return normalizeStorage(parsed);
+	} catch {
+		return null;
 	}
 }
 
@@ -658,28 +679,20 @@ export async function inspectAccountsFile(): Promise<AccountsInspection> {
 
 async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
 	const filePath = getStoragePath();
-	await fs.mkdir(dirname(filePath), { recursive: true });
-	if (!existsSync(filePath)) {
-		await fs.writeFile(
-			filePath,
-			JSON.stringify(
-				{
-					version: 3,
-					accounts: [],
-					activeIndex: 0,
-					activeIndexByFamily: {},
-				},
-				null,
-				2,
-			),
-			"utf-8",
-		);
-	}
 	await withFileLock(filePath, async () => {
 		const jsonContent = JSON.stringify(storage, null, 2);
 		const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
-		await fs.writeFile(tmpPath, jsonContent, "utf-8");
-		await fs.rename(tmpPath, filePath);
+		try {
+			await fs.writeFile(tmpPath, jsonContent, "utf-8");
+			await fs.rename(tmpPath, filePath);
+		} catch (error) {
+			try {
+				await fs.unlink(tmpPath);
+			} catch {
+				// ignore cleanup errors
+			}
+			throw error;
+		}
 	});
 }
 
@@ -720,6 +733,8 @@ export async function quarantineCorruptFile(): Promise<string | null> {
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
 		await fs.copyFile(filePath, quarantinePath);
+		await ensurePrivateFileMode(quarantinePath);
+		await cleanupQuarantineFiles(filePath);
 	});
 	await writeAccountsFile({
 		version: 3,
@@ -801,31 +816,24 @@ export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 	debug(`[SaveAccounts] Saving to ${filePath} with ${storage.accounts.length} accounts`);
 
 	try {
-		await fs.mkdir(dirname(filePath), { recursive: true });
-		if (!existsSync(filePath)) {
-			await fs.writeFile(
-				filePath,
-				JSON.stringify(
-					{
-						version: 3,
-						accounts: [],
-						activeIndex: 0,
-						activeIndexByFamily: {},
-					},
-					null,
-					2,
-				),
-				"utf-8",
-			);
-		}
 		await withFileLock(filePath, async () => {
-			const existing = await loadAccounts().catch(() => null);
+			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
+			const existing = await loadAccountsUnsafe(filePath);
 			const mergedStorage = existing ? mergeAccountStorage(existing, storage) : storage;
 			const jsonContent = JSON.stringify(mergedStorage, null, 2);
 			debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
-			await fs.writeFile(tmpPath, jsonContent, "utf-8");
-			await fs.rename(tmpPath, filePath);
+			try {
+				await fs.writeFile(tmpPath, jsonContent, "utf-8");
+				await fs.rename(tmpPath, filePath);
+			} catch (error) {
+				try {
+					await fs.unlink(tmpPath);
+				} catch {
+					// ignore cleanup errors
+				}
+				throw error;
+			}
 
 			if (AUTH_DEBUG_ENABLED) {
 				const verifyContent = await fs.readFile(filePath, "utf-8");
