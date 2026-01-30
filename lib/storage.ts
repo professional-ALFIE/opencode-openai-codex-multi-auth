@@ -20,6 +20,93 @@ function debug(...args: unknown[]): void {
 	console.debug(...args);
 }
 
+function hasCompleteIdentity(record: {
+	accountId?: string;
+	email?: string;
+	plan?: string;
+}): boolean {
+	return Boolean(record.accountId && record.email && record.plan);
+}
+
+function normalizeAccountRecord(candidate: unknown, now: number): AccountRecord | null {
+	if (!candidate || typeof candidate !== "object") return null;
+	const record = candidate as Record<string, unknown>;
+
+	const refreshTokenRaw =
+		typeof record.refreshToken === "string"
+			? record.refreshToken
+			: typeof record.refresh_token === "string"
+				? record.refresh_token
+				: typeof record.refresh === "string"
+					? record.refresh
+					: undefined;
+	const refreshToken = typeof refreshTokenRaw === "string" ? refreshTokenRaw.trim() : "";
+	if (!refreshToken) return null;
+
+	const accountIdRaw =
+		typeof record.accountId === "string"
+			? record.accountId
+			: typeof record.account_id === "string"
+				? record.account_id
+				: undefined;
+	const accountId = typeof accountIdRaw === "string" && accountIdRaw.trim() ? accountIdRaw : undefined;
+
+	const emailRaw = typeof record.email === "string" ? record.email : undefined;
+	const email = typeof emailRaw === "string" && emailRaw.trim() ? emailRaw : undefined;
+
+	const planRaw =
+		typeof record.plan === "string"
+			? record.plan
+			: typeof record.chatgpt_plan_type === "string"
+				? record.chatgpt_plan_type
+				: undefined;
+	const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
+	const enabled = typeof record.enabled === "boolean" ? record.enabled : undefined;
+
+	const addedAt =
+		typeof record.addedAt === "number" && Number.isFinite(record.addedAt)
+			? record.addedAt
+			: now;
+	const lastUsed =
+		typeof record.lastUsed === "number" && Number.isFinite(record.lastUsed)
+			? record.lastUsed
+			: now;
+
+	const lastSwitchReason =
+		typeof record.lastSwitchReason === "string" ? record.lastSwitchReason : undefined;
+
+	const rateLimitResetTimes =
+		record.rateLimitResetTimes && typeof record.rateLimitResetTimes === "object"
+			? (record.rateLimitResetTimes as RateLimitState)
+			: undefined;
+	const coolingDownUntil =
+		typeof record.coolingDownUntil === "number" && Number.isFinite(record.coolingDownUntil)
+			? record.coolingDownUntil
+			: undefined;
+	const cooldownReasonRaw =
+		typeof record.cooldownReason === "string" ? record.cooldownReason : undefined;
+	const cooldownReason = cooldownReasonRaw === "auth-failure" ? "auth-failure" : undefined;
+
+	return {
+		refreshToken,
+		accountId,
+		email,
+		plan,
+		enabled,
+		addedAt: Math.max(0, Math.floor(addedAt)),
+		lastUsed: Math.max(0, Math.floor(lastUsed)),
+		lastSwitchReason:
+			lastSwitchReason === "rate-limit" ||
+			lastSwitchReason === "initial" ||
+			lastSwitchReason === "rotation"
+				? lastSwitchReason
+				: undefined,
+		rateLimitResetTimes,
+		coolingDownUntil,
+		cooldownReason,
+	};
+}
+
 const LOCK_OPTIONS = {
 	stale: 10_000,
 	retries: {
@@ -63,6 +150,14 @@ export function getStoragePath(): string {
 	return join(getOpencodeConfigDir(), STORAGE_FILE);
 }
 
+export type AccountsInspection = {
+	status: "missing" | "corrupt-file" | "ok" | "needs-repair";
+	corruptEntries: unknown[];
+	legacyEntries: AccountRecord[];
+	validEntries: AccountRecord[];
+	reason?: string;
+};
+
 export async function backupAccountsFile(): Promise<string | null> {
 	const filePath = getStoragePath();
 	if (!existsSync(filePath)) return null;
@@ -81,86 +176,6 @@ function getLegacyStoragePath(): string {
 function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 	const now = Date.now();
 
-	const normalizeAccountRecord = (candidate: unknown): AccountRecord | null => {
-		if (!candidate || typeof candidate !== "object") return null;
-		const record = candidate as Record<string, unknown>;
-
-		const refreshTokenRaw =
-			typeof record.refreshToken === "string"
-				? record.refreshToken
-				: typeof record.refresh_token === "string"
-					? record.refresh_token
-					: typeof record.refresh === "string"
-						? record.refresh
-						: undefined;
-		const refreshToken = typeof refreshTokenRaw === "string" ? refreshTokenRaw.trim() : "";
-		if (!refreshToken) return null;
-
-		const accountIdRaw =
-			typeof record.accountId === "string"
-				? record.accountId
-				: typeof record.account_id === "string"
-					? record.account_id
-					: undefined;
-		const accountId = typeof accountIdRaw === "string" && accountIdRaw.trim() ? accountIdRaw : undefined;
-
-		const emailRaw = typeof record.email === "string" ? record.email : undefined;
-		const email = typeof emailRaw === "string" && emailRaw.trim() ? emailRaw : undefined;
-
-		const planRaw =
-			typeof record.plan === "string"
-				? record.plan
-				: typeof record.chatgpt_plan_type === "string"
-					? record.chatgpt_plan_type
-					: undefined;
-		const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
-		const enabled = typeof record.enabled === "boolean" ? record.enabled : undefined;
-
-
-		const addedAt =
-			typeof record.addedAt === "number" && Number.isFinite(record.addedAt)
-				? record.addedAt
-				: now;
-		const lastUsed =
-			typeof record.lastUsed === "number" && Number.isFinite(record.lastUsed)
-				? record.lastUsed
-				: now;
-
-		const lastSwitchReason =
-			typeof record.lastSwitchReason === "string" ? record.lastSwitchReason : undefined;
-
-		const rateLimitResetTimes =
-			record.rateLimitResetTimes && typeof record.rateLimitResetTimes === "object"
-				? (record.rateLimitResetTimes as RateLimitState)
-				: undefined;
-		const coolingDownUntil =
-			typeof record.coolingDownUntil === "number" && Number.isFinite(record.coolingDownUntil)
-				? record.coolingDownUntil
-				: undefined;
-		const cooldownReasonRaw =
-			typeof record.cooldownReason === "string" ? record.cooldownReason : undefined;
-		const cooldownReason = cooldownReasonRaw === "auth-failure" ? "auth-failure" : undefined;
-
-		return {
-			refreshToken,
-			accountId,
-			email,
-			plan,
-			enabled,
-			addedAt: Math.max(0, Math.floor(addedAt)),
-			lastUsed: Math.max(0, Math.floor(lastUsed)),
-			lastSwitchReason:
-				lastSwitchReason === "rate-limit" ||
-				lastSwitchReason === "initial" ||
-				lastSwitchReason === "rotation"
-					? lastSwitchReason
-					: undefined,
-			rateLimitResetTimes,
-			coolingDownUntil,
-			cooldownReason,
-		};
-	};
-
 	let accountsSource: unknown;
 	let activeIndexSource: unknown = 0;
 	let activeIndexByFamilySource: unknown = undefined;
@@ -178,7 +193,7 @@ function normalizeStorage(parsed: unknown): AccountStorageV3 | null {
 
 	if (!Array.isArray(accountsSource)) return null;
 	const normalizedAccounts = accountsSource
-		.map(normalizeAccountRecord)
+		.map((entry) => normalizeAccountRecord(entry, now))
 		.filter((a): a is AccountRecord => a !== null);
 	const activeIndexRaw =
 		typeof activeIndexSource === "number" && Number.isFinite(activeIndexSource)
@@ -522,6 +537,156 @@ async function migrateLegacyAccountsFileIfNeeded(): Promise<void> {
 	} catch {
 		// Best-effort; ignore.
 	}
+}
+
+function extractAccountsSource(parsed: unknown): {
+	accountsSource: unknown[];
+	activeIndexSource: unknown;
+	activeIndexByFamilySource: unknown;
+} | null {
+	if (Array.isArray(parsed)) {
+		return { accountsSource: parsed, activeIndexSource: 0, activeIndexByFamilySource: undefined };
+	}
+	if (parsed && typeof parsed === "object") {
+		const storage = parsed as Record<string, unknown>;
+		if (!Array.isArray(storage.accounts)) return null;
+		return {
+			accountsSource: storage.accounts,
+			activeIndexSource: storage.activeIndex,
+			activeIndexByFamilySource: storage.activeIndexByFamily,
+		};
+	}
+	return null;
+}
+
+export async function inspectAccountsFile(): Promise<AccountsInspection> {
+	const filePath = getStoragePath();
+	if (!existsSync(filePath)) {
+		return { status: "missing", corruptEntries: [], legacyEntries: [], validEntries: [] };
+	}
+	try {
+		const raw = await fs.readFile(filePath, "utf-8");
+		const parsed = JSON.parse(raw) as unknown;
+		const source = extractAccountsSource(parsed);
+		if (!source) {
+			return {
+				status: "corrupt-file",
+				reason: "invalid-shape",
+				corruptEntries: [],
+				legacyEntries: [],
+				validEntries: [],
+			};
+		}
+		const now = Date.now();
+		const corruptEntries: unknown[] = [];
+		const legacyEntries: AccountRecord[] = [];
+		const validEntries: AccountRecord[] = [];
+		for (const entry of source.accountsSource) {
+			const normalized = normalizeAccountRecord(entry, now);
+			if (!normalized) {
+				corruptEntries.push(entry);
+				continue;
+			}
+			if (!hasCompleteIdentity(normalized)) {
+				legacyEntries.push(normalized);
+				continue;
+			}
+			validEntries.push(normalized);
+		}
+		if (corruptEntries.length > 0 || legacyEntries.length > 0) {
+			return {
+				status: "needs-repair",
+				corruptEntries,
+				legacyEntries,
+				validEntries,
+			};
+		}
+		return { status: "ok", corruptEntries: [], legacyEntries: [], validEntries };
+	} catch {
+		return {
+			status: "corrupt-file",
+			reason: "parse-error",
+			corruptEntries: [],
+			legacyEntries: [],
+			validEntries: [],
+		};
+	}
+}
+
+async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
+	const filePath = getStoragePath();
+	await fs.mkdir(dirname(filePath), { recursive: true });
+	if (!existsSync(filePath)) {
+		await fs.writeFile(
+			filePath,
+			JSON.stringify(
+				{
+					version: 3,
+					accounts: [],
+					activeIndex: 0,
+					activeIndexByFamily: {},
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+	}
+	await withFileLock(filePath, async () => {
+		const jsonContent = JSON.stringify(storage, null, 2);
+		const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+		await fs.writeFile(tmpPath, jsonContent, "utf-8");
+		await fs.rename(tmpPath, filePath);
+	});
+}
+
+export async function writeQuarantineFile(
+	records: unknown[],
+	reason: string,
+): Promise<string> {
+	const filePath = getStoragePath();
+	const quarantinePath = `${filePath}.quarantine-${Date.now()}.json`;
+	await fs.mkdir(dirname(filePath), { recursive: true });
+	const payload = {
+		reason,
+		quarantinedAt: new Date().toISOString(),
+		records,
+	};
+	if (existsSync(filePath)) {
+		await withFileLock(filePath, async () => {
+			await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
+		});
+		return quarantinePath;
+	}
+	await fs.writeFile(quarantinePath, JSON.stringify(payload, null, 2), "utf-8");
+	return quarantinePath;
+}
+
+export async function quarantineAccounts(
+	storage: AccountStorageV3,
+	entries: AccountRecord[],
+	reason: string,
+): Promise<{ storage: AccountStorageV3; quarantinePath: string }> {
+	if (!entries.length) {
+		return { storage, quarantinePath: await writeQuarantineFile([], reason) };
+	}
+	const tokens = new Set(entries.map((entry) => entry.refreshToken));
+	const remaining = storage.accounts.filter((account) => !tokens.has(account.refreshToken));
+	const normalized = normalizeStorage({
+		accounts: remaining,
+		activeIndex: storage.activeIndex,
+		activeIndexByFamily: storage.activeIndexByFamily,
+	});
+	const updated: AccountStorageV3 =
+		normalized ?? {
+			version: 3,
+			accounts: [],
+			activeIndex: 0,
+			activeIndexByFamily: {},
+		};
+	const quarantinePath = await writeQuarantineFile(entries, reason);
+	await writeAccountsFile(updated);
+	return { storage: updated, quarantinePath };
 }
 
 export async function loadAccounts(): Promise<AccountStorageV3 | null> {

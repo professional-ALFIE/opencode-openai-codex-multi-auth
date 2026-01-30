@@ -13,7 +13,14 @@ import { promises as fsPromises } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { getStoragePath, loadAccounts, saveAccounts, toggleAccountEnabled } from "../lib/storage.js";
+import {
+	getStoragePath,
+	inspectAccountsFile,
+	loadAccounts,
+	quarantineAccounts,
+	saveAccounts,
+	toggleAccountEnabled,
+} from "../lib/storage.js";
 import type { AccountStorageV3 } from "../lib/types.js";
 
 function loadFixture(fileName: string): AccountStorageV3 {
@@ -406,5 +413,67 @@ describe("storage", () => {
 
 		const toggledSecond = toggleAccountEnabled(storage, 1);
 		expect(toggledSecond?.accounts[1]?.enabled).toBe(false);
+	});
+
+	it("inspectAccountsFile flags corrupt json", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		writeFileSync(storagePath, "{", "utf-8");
+
+		const result = await inspectAccountsFile();
+
+		expect(result.status).toBe("corrupt-file");
+	});
+
+	it("inspectAccountsFile reports corrupt + legacy entries", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		writeFileSync(
+			storagePath,
+			JSON.stringify(
+				{
+					accounts: [
+						{ ...accountOne },
+						{ ...accountTwo, refreshToken: "" },
+						{ ...accountTwo, plan: undefined },
+					],
+					activeIndex: 0,
+					activeIndexByFamily: { codex: 0 },
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const result = await inspectAccountsFile();
+
+		expect(result.status).toBe("needs-repair");
+		expect(result.corruptEntries).toHaveLength(1);
+		expect(result.legacyEntries).toHaveLength(1);
+	});
+
+	it("quarantineAccounts writes file and removes entries", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
+		const storage = loadFixture("openai-codex-accounts.json");
+
+		const result = await quarantineAccounts(storage, [storage.accounts[0]!], "test");
+
+		expect(result.quarantinePath).toBeTruthy();
+		expect(existsSync(result.quarantinePath)).toBe(true);
+		const payload = JSON.parse(readFileSync(result.quarantinePath, "utf-8")) as {
+			records?: unknown[];
+		};
+		expect(payload.records).toHaveLength(1);
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts.length).toBe(storage.accounts.length - 1);
 	});
 });
