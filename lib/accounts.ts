@@ -696,6 +696,22 @@ export class AccountManager {
 		}
 	}
 
+	async getMinWaitTimeForFamilyWithHydration(
+		family: ModelFamily,
+		model?: string | null,
+	): Promise<number> {
+		const needsHydration = this.accounts.some((account) => !hasCompleteIdentity(account));
+		if (needsHydration) {
+			try {
+				await this.hydrateMissingEmails();
+				await this.saveToDisk();
+			} catch {
+				// Best-effort; ignore hydration failures here.
+			}
+		}
+		return this.getMinWaitTimeForFamily(family, model);
+	}
+
 	getMinWaitTimeForFamily(family: ModelFamily, model?: string | null): number {
 		const now = nowMs();
 		const eligible = this.accounts.filter(

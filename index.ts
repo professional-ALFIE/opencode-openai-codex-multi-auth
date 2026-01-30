@@ -633,7 +633,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						}
 					}
 
-							const waitMs = accountManager.getMinWaitTimeForFamily(modelFamily, model);
+							const waitMs = await accountManager.getMinWaitTimeForFamilyWithHydration(
+								modelFamily,
+								model,
+							);
 							if (
 								retryAllAccountsRateLimited &&
 								accountManager.getAccountCount() > 0 &&

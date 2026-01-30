@@ -598,6 +598,40 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("hydrates legacy accounts before calculating wait time", async () => {
+		vi.useFakeTimers();
+		try {
+			const storage = createStorage(2);
+			storage.accounts[0] = {
+				...storage.accounts[0]!,
+				email: undefined,
+				accountId: undefined,
+				plan: undefined,
+			};
+			const now = Date.now();
+			storage.accounts[1] = {
+				...storage.accounts[1]!,
+				rateLimitResetTimes: { codex: now + 10_000 },
+			};
+			const manager = new AccountManager(
+				createAuth(storage.accounts[0]!.refreshToken),
+				storage,
+			);
+			const hydrateSpy = vi
+				.spyOn(manager, "hydrateMissingEmails")
+				.mockResolvedValue();
+			const saveSpy = vi.spyOn(manager, "saveToDisk").mockResolvedValue();
+
+			const waitMs = await manager.getMinWaitTimeForFamilyWithHydration(family, null);
+
+			expect(hydrateSpy).toHaveBeenCalled();
+			expect(saveSpy).toHaveBeenCalled();
+			expect(waitMs).toBe(10_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not duplicate rate-limit keys when model matches family", () => {
 		const manager = new AccountManager(
 			createAuth(fixtureAccounts[0]!.refreshToken),
