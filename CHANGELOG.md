@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.7] - 2026-01-30
+
+**Hardening release**: account repair/quarantine UX, safer locking, and better production ergonomics.
+
+### Added
+- **Repair + quarantine UX**: detect corrupt storage / legacy identity records and prompt to repair during login; auto-repair once on first send when no eligible accounts.
+- **Wrap-safe messaging**: toast/status formatting helpers to keep TUI output readable.
+- **Account controls**: `openai-accounts-toggle` tool to enable/disable an account by index.
+
+### Changed
+- **Storage locking**: lock paths ensure the storage file exists before acquiring `proper-lockfile` (antigravity-style).
+- **Migration safety**: legacy migration runs under the storage lock to avoid cross-process races.
+- **Quarantine safety**: quarantine copies attempt `0600` and older quarantine files may be pruned to avoid unbounded buildup.
+- **Write robustness**: `.tmp` files are cleaned up on save failures.
+- **Manual OAuth security**: validate OAuth `state` when provided; recommend pasting the full redirect URL.
+- **Release pipeline**: GitHub Actions publishes to npm via OIDC provenance.
+
+### Fixed
+- **Disabled account safety**: disabled accounts are excluded from refresh/hydration and proactive refresh.
+
+### Documentation
+- **Multi-account docs**: document repair/quarantine behavior, account toggle, and retention notes.
+
 ## [4.5.6] - 2026-01-29
 
 **Multi-account parity release**: strict identity, account management, and refresh/hydration reliability.
