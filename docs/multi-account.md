@@ -15,8 +15,11 @@ opencode auth login
 When accounts already exist, you'll be prompted:
 
 ```
-(a)dd new account(s) or (f)resh start? [a/f]:
+(a)dd, (f)resh start, or (m)anage accounts? [a/f/m]:
 ```
+
+Use **manage** to toggle accounts enabled/disabled. Disabled accounts are skipped for
+selection and rate-limit calculations, and are never re-enabled automatically.
 
 ## Load Balancing Behavior
 
@@ -64,6 +67,7 @@ The plugin exposes a few OpenCode tools to inspect or switch accounts:
 - `openai-accounts-switch` - switch active account by index (1-based)
 
 These are primarily useful in the OpenCode TUI.
+To enable or disable accounts, re-run `opencode auth login` and choose **manage**.
 
 ## Storage
 
@@ -81,7 +85,9 @@ Example accounts file:
     {
       "email": "you@example.com",
       "accountId": "acct_...",
+      "plan": "Plus",
       "refreshToken": "...",
+      "enabled": true,
       "addedAt": 1700000000000,
       "lastUsed": 1700000000000
     }
@@ -100,8 +106,8 @@ Example accounts file:
 `version` is the **accounts file format version**. The plugin currently reads/writes version `3`.
 It's not related to the npm package version; it exists so the file format can evolve safely over time.
 
-Accounts are matched by `accountId` + `plan` (email is display-only). This allows the same ChatGPT
-account to store multiple plans without overwriting each other.
+Accounts are matched by `accountId` + `email` + `plan` (strict identity). This allows multiple
+emails per account and multiple accounts per email without collisions.
 
 ### Fields
 
@@ -109,7 +115,9 @@ account to store multiple plans without overwriting each other.
 |-------|-------------|
 | `email` | Best-effort email extracted from the OAuth JWT (may be missing) |
 | `accountId` | ChatGPT account ID extracted from the OAuth JWT (may be missing) |
+| `plan` | ChatGPT plan name extracted from the OAuth JWT (may be missing) |
 | `refreshToken` | OAuth refresh token (auto-managed) |
+| `enabled` | Whether the account can be selected (defaults to true) |
 | `addedAt` | Timestamp when the account was first stored |
 | `lastUsed` | Timestamp when the account was last selected |
 | `activeIndex` | Active account index (used by the account switch tool) |
@@ -143,8 +151,8 @@ CODEX_AUTH_ACCOUNT_SELECTION_STRATEGY=hybrid
 
 ## Resetting Accounts
 
-If you upgraded from a version that matched accounts by accountId only, multiple
-plans on the same account could have been overwritten. To rebuild clean storage:
+If you upgraded from a version that matched accounts by accountId only (or accountId + plan),
+multiple emails/plans on the same account could have been overwritten. To rebuild clean storage:
 
 ```bash
 rm ~/.config/opencode/openai-codex-accounts.json

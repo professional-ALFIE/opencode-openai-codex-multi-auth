@@ -106,10 +106,10 @@ lsof -i :1455
 ### Multiple plans overwritten
 
 **Symptoms:**
-- Accounts with the same accountId but different plans collapse into one entry
+- Accounts with the same accountId but different emails or plans collapse into one entry
 
 **Cause:**
-- Older versions matched on accountId only
+- Older versions matched on accountId (or accountId + plan) without email
 
 **Fix:**
 ```bash
