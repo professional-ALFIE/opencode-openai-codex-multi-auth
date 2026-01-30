@@ -44,6 +44,14 @@ describe('Plugin Configuration', () => {
 			retryAllAccountsMaxRetries: 1,
 			tokenRefreshSkewMs: 60_000,
 			rateLimitToastDebounceMs: 60_000,
+			schedulingMode: 'cache_first',
+			maxCacheFirstWaitSeconds: 60,
+			switchOnFirstRateLimit: true,
+			rateLimitDedupWindowMs: 2000,
+			rateLimitStateResetMs: 120_000,
+			defaultRetryAfterMs: 60_000,
+			maxBackoffMs: 120_000,
+			requestJitterMaxMs: 1000,
 		};
 
 		it('should return default config when file does not exist', () => {
