@@ -695,10 +695,16 @@ export class AccountManager {
 			try {
 				const refreshed = await this.refreshAccountWithLock(account);
 				if (refreshed.type !== "success") continue;
-				const tokenForClaims = refreshed.idToken ?? refreshed.access;
-				account.accountId = extractAccountId(tokenForClaims) ?? account.accountId;
-				account.email = sanitizeEmail(extractAccountEmail(tokenForClaims)) ?? account.email;
-				account.plan = extractAccountPlan(tokenForClaims) ?? account.plan;
+				const idToken = refreshed.idToken;
+				const accessToken = refreshed.access;
+				account.accountId =
+					extractAccountId(idToken) ?? extractAccountId(accessToken) ?? account.accountId;
+				account.email =
+					sanitizeEmail(extractAccountEmail(idToken)) ??
+					sanitizeEmail(extractAccountEmail(accessToken)) ??
+					account.email;
+				account.plan =
+					extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
 			} catch {
 				// ignore

@@ -74,6 +74,11 @@ describe("accounts", () => {
 		expect(needsIdentityHydration(accounts)).toBe(true);
 	});
 
+	it("needsIdentityHydration returns true when plan missing", () => {
+		const accounts = [{ ...fixtureAccount, plan: undefined }];
+		expect(needsIdentityHydration(accounts)).toBe(true);
+	});
+
 	it("needsIdentityHydration returns false when all accounts complete", () => {
 		const accounts = [{ ...fixtureAccount }];
 		expect(needsIdentityHydration(accounts)).toBe(false);
