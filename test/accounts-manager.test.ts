@@ -417,6 +417,62 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("hydrates email and accountId from access token when id token missing claims", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const base = seedStorageFromBackup(root);
+			const original = base.accounts[0]!;
+			const legacy = {
+				...original,
+				email: undefined,
+				accountId: undefined,
+			};
+			const storage: AccountStorageV3 = {
+				...base,
+				accounts: [legacy, ...base.accounts.slice(1)],
+			};
+			const hydration = JSON.parse(
+				readFileSync(new URL("./fixtures/oauth-hydration.json", import.meta.url), "utf-8"),
+			) as HydrationFixture;
+			const tokenEntry = hydration.tokens.find(
+				(entry) => entry.refreshToken === original.refreshToken,
+			);
+			if (!tokenEntry) throw new Error("Missing hydration fixture");
+			const idPayload = {
+				...tokenEntry.idPayload,
+				[JWT_CLAIM_PATH]: {
+					...(tokenEntry.idPayload[JWT_CLAIM_PATH] as Record<string, unknown>),
+					chatgpt_account_id: undefined,
+					email: undefined,
+				},
+			};
+			const idToken = createJwt(idPayload);
+			const accessToken = createJwt(tokenEntry.accessPayload);
+			const refreshSpy = vi
+				.spyOn(authModule, "refreshAccessToken")
+				.mockResolvedValue({
+					type: "success",
+					access: accessToken,
+					refresh: `${original.refreshToken}-new`,
+					expires: Date.now() + 60_000,
+					idToken,
+				});
+
+			const manager = new AccountManager(undefined, storage);
+			await manager.hydrateMissingEmails();
+
+			const updated = manager.getAccountsSnapshot().find(
+				(account) => account.refreshToken === `${original.refreshToken}-new`,
+			);
+			expect(refreshSpy).toHaveBeenCalledTimes(1);
+			expect(updated?.email).toBe(original.email);
+			expect(updated?.accountId).toBe(original.accountId);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("keeps legacy accounts but skips them for selection", () => {
 		const legacyStorage: AccountStorageV3 = {
 			...fixture,
