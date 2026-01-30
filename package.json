@@ -10,6 +10,10 @@
   "contributors": [
     "iam-brain (https://github.com/iam-brain)"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/iam-brain/opencode-openai-codex-multi-auth.git"
