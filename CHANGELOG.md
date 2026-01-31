@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.16] - 2026-01-31
+
+**Proactive Hydration & UI Alignment release**: ensures identities are recovered during tool calls and labels match actual 5h/7d limits.
+
+### Added
+- **Reset Dates**: long-term resets (>24h) now display the full date (MM/DD) and time in status bars.
+- **Proactive Hydration**: tool calls (`openai-accounts`, `status-codex`) now explicitly trigger identity recovery for legacy accounts.
+
+### Changed
+- **5h Limit Correction**: updated labels and documentation to correctly reflect the 5h (300m) Primary window instead of 3h.
+- **Perfect UI Alignment**: refactored table rendering with fixed-width padding for percentage and plan columns to prevent horizontal shifting.
+- **Always-Visible Bars**: both Primary and Weekly bars now always display for every account (showing `unknown` if no data yet) to maintain vertical layout consistency.
+
+### Fixed
+- **Tool Registration**: resolved syntax errors in `index.ts` that prevented tools from being properly exported and recognized by OpenCode.
+
+## [4.5.15] - 2026-01-31
+
+**Cache Retention release**: automatic pruning of stale snapshot data.
+
+### Added
+- **Snapshot Retention**: implemented automatic pruning for snapshots older than 7 days to prevent accumulation of stale or contaminated data.
+- **Diagnostic Logging**: added `OPENCODE_OPENAI_AUTH_DEBUG=1` support for troubleshooting identity key generation and header parsing.
+
 ## [4.5.12] - 2026-01-30
 
 **Final Hardening & Concurrency Safety release**: async status manager, promise-based initialization, and cross-process safety.
