@@ -225,24 +225,26 @@ export class CodexStatusManager {
 					resetStr = ` (resets ${timeStr})`;
 				}
 			} else if (!data) {
-				return `  ${(label + ":").padEnd(15)} [${"░".repeat(width)}] unknown`.padEnd(65);
+				return `  ${(label + ":").padEnd(16)} [${"░".repeat(width)}] unknown`.padEnd(65);
 			}
 
 			const statusStr = `${leftPercent.toFixed(0)}% left`.padEnd(9);
-			return `  ${(label + ":").padEnd(15)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(65);
+			return `  ${(label + ":").padEnd(16)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(65);
 		};
 
 		if (!snapshot) {
-			lines.push(renderBar("5h limit", null)!);
-			lines.push(renderBar("7d limit", null)!);
+			lines.push(renderBar("5 hour limit", null)!);
+			lines.push(renderBar("Weekly limit", null)!);
 			return lines;
 		}
 
-		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "5h";
-		lines.push(renderBar(`${primaryLabel} limit`, snapshot.primary)!);
+		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0);
+		const primaryHeader = primaryLabel === "5h" ? "5 hour limit" : `${primaryLabel || "5 hour"} limit`;
+		lines.push(renderBar(primaryHeader, snapshot.primary)!);
 
-		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "7d";
-		lines.push(renderBar(`${secondaryLabel} limit`, snapshot.secondary)!);
+		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0);
+		const secondaryHeader = secondaryLabel === "7d" || secondaryLabel === "weekly" ? "Weekly limit" : `${secondaryLabel || "Weekly"} limit`;
+		lines.push(renderBar(secondaryHeader, snapshot.secondary)!);
 
 		if (snapshot.credits) {
 			const { unlimited, balance } = snapshot.credits;
