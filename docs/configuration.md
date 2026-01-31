@@ -403,13 +403,30 @@ Add `$schema` for editor autocompletion:
   "codexMode": true,
   "accountSelectionStrategy": "sticky",
   "pidOffsetEnabled": true,
-  "quietMode": false
+  "quietMode": false,
+  "perProjectAccounts": false
 }
 ```
 
+#### Per-Project Storage
+
+**What it does:**
+- `true`: Looks for `.opencode/openai-codex-accounts.json` in the current working directory (or parent directories). If found, it uses that file for account storage instead of the global file.
+- `false` (default): Always uses the global accounts file (`~/.config/opencode/openai-codex-accounts.json`).
+
+**Use case:**
+- Isolating accounts for specific projects (e.g., client projects with dedicated credentials).
+- Keeping credentials inside a project directory (ensure `.opencode/` is gitignored!).
+
+**Behavior:**
+- If `perProjectAccounts: true` AND a project-local file exists: Uses project storage.
+- If `perProjectAccounts: true` AND NO project-local file exists: Falls back to global storage.
+- If `perProjectAccounts: false`: Always uses global storage.
+
 Account pool storage:
 
-- `~/.config/opencode/openai-codex-accounts.json`
+- `~/.config/opencode/openai-codex-accounts.json` (Global)
+- `.opencode/openai-codex-accounts.json` (Project-local)
 
 For a detailed guide, see [docs/multi-account.md](multi-account.md).
 
