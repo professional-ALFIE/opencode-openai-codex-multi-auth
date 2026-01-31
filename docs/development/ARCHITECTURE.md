@@ -441,6 +441,7 @@ The plugin is designed to operate safely across multiple concurrent processes (e
 
 ### Codex Status Snapshots
 - **Disk Persistence**: Snapshots are stored in `~/.config/opencode/cache/codex-snapshots.json`.
+- **Authoritative Fetching**: The plugin actively polls the official OpenAI `/wham/usage` (ChatGPT) and `/api/codex/usage` (API) endpoints during status tool calls to ensure 100% accurate telemetry.
 - **Concurrency Strategy**: 
   - **Async Locking**: Uses `proper-lockfile` to coordinate access between the proxy and CLI tools.
   - **Merge-on-Save**: When saving, the plugin re-loads snapshots from disk and merges them with in-memory state, using a timestamp-based (`updatedAt`) check to ensure the newest data always wins.
@@ -450,19 +451,21 @@ The plugin is designed to operate safely across multiple concurrent processes (e
 
 ## Codex Status Tool Implementation
 
-The `status-codex` and `openai-accounts` tools provide real-time visibility into OpenAI's backend rate limits.
+The `status-codex` and `openai-accounts` tools provide real-time visibility into OpenAI's backend rate limits, perfectly mimicking the behavior of `codex-rs v0.92.0`.
 
 ### Data Capture
-The plugin intercepts `x-codex-*` headers from the OpenAI response stream:
-- `x-codex-primary-used-percent`: Usage for the current window.
-- `x-codex-primary-window-minutes`: Duration of the window (e.g., 300 for 5h).
-- `x-codex-primary-reset-at`: Epoch timestamp for the next reset.
-- `x-codex-credits-*`: Team/Enterprise credit balance and unlimited status.
+The plugin retrieves usage data from the authoritative `/wham/usage` endpoint:
+- **Primary Window**: Maps to the "5 hour limit:".
+- **Secondary Window**: Maps to the "Weekly limit:".
+- **Credits**: Captures balance and unlimited status for Team/Enterprise accounts.
+- **SSE Interception**: As a real-time fallback, the plugin also scans the live response stream for `token_count` events to update limits immediately during model usage.
 
 ### Rendering
-- **Dynamic Labels**: Labels (e.g., `5h`, `7d`) are derived from the `windowMinutes` header.
-- **ASCII Bars**: Usage is rendered as a 20-character ASCII progress bar (`████░░░░`).
-- **Staleness Tracking**: Data older than 15 minutes is marked as `(stale)` to avoid misleading the user with outdated limits.
+- **Inverted Logic**: Displays "% left" instead of "% used" (e.g., `100 - usedPercent`), matching the official CLI.
+- **ASCII Bars**: Filled portion (`█`) represents remaining quota; empty portion (`░`) represents used quota.
+- **Dynamic Labels**: Explicitly labeled as "5 hour limit:" and "Weekly limit:" for clarity.
+- **Detailed Resets**: Resets more than 24 hours away include the full date (e.g., `resets 18:10 on 5 Feb`).
+- **Vertical Stability**: Both Primary and Weekly bars are always rendered (showing `unknown` if no data) to maintain a consistent table layout.
 
 ---
 
