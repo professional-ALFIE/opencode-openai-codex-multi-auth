@@ -220,15 +220,6 @@ async function withFileLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
 	}
 }
 
-async function ensurePrivateFileMode(path: string): Promise<void> {
-	try {
-		// Best-effort: make quarantine files readable only by the current user.
-		await fs.chmod(path, 0o600);
-	} catch {
-		// ignore (unsupported on some platforms/filesystems)
-	}
-}
-
 async function cleanupQuarantineFiles(storagePath: string): Promise<void> {
 	try {
 		const dir = dirname(storagePath);
