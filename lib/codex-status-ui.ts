@@ -59,11 +59,12 @@ export function renderObsidianDashboard(
 	const now = Date.now();
 	const lines: string[] = [];
 
-	// Column Widths
-	const W_NUM = 5;
-	const W_STATUS = 12;
+	// Column Widths (Restored to perfect alignment values)
+	const W_NUM = 4;
+	const W_STATUS = 10;
 	const W_EMAIL = 42;
-	const W_PLAN = 15;
+	const W_PLAN = 11;
+	// No W_QUOTA needed for right wall anymore, just extend PLAN
 
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
@@ -76,23 +77,23 @@ export function renderObsidianDashboard(
 	};
 
 	// Header
+	// Shift STATUS header +2 spaces relative to data column (which has 1 space padding)
+	// Original: " STATUS" (1 space)
+	// New:      "   STATUS" (3 spaces)
 	const hRow =
 		padVisible(`  #`, W_NUM) +
-		padVisible(`STATUS`, W_STATUS) +
+		padVisible(`   STATUS`, W_STATUS + 1) + 
+		`  ` + // 2 spaces separation
 		padVisible(`ACCOUNT`, W_EMAIL) +
 		`PLAN`;
 	lines.push(`${clr.bold}${hRow}${clr.reset}`);
 
-	// Divider - Single continuous line with gaps only where requested
 	const divider =
-		"  " +
-		"-".repeat(W_NUM - 2) +
-		"  " +
-		"-".repeat(W_STATUS - 2) +
-		"  " +
-		"-".repeat(W_EMAIL - 2) +
-		"  " +
-		"-".repeat(30);
+		padVisible(`  ${"-".repeat(W_NUM - 2)}`, W_NUM) +
+		padVisible("   " + "-".repeat(W_STATUS - 4), W_STATUS + 1) + 
+		`  ` + // 2 spaces separation
+		padVisible("-".repeat(W_EMAIL - 1), W_EMAIL) +
+		"-".repeat(50); // Extended underline for PLAN + Usage
 	lines.push(`${clr.gray}${divider}${clr.reset}`);
 
 	accounts.forEach((acc, i) => {
@@ -122,12 +123,13 @@ export function renderObsidianDashboard(
 
 		const num = `  ${i + 1}`;
 		const status = `${statusStyle}${statusLabel}${clr.reset}`;
-		const email = `${clr.bold}${padVisible(acc.email || "unknown", W_EMAIL)}${clr.reset}`;
-		const plan = `${clr.magenta}${acc.plan || "Free"}${clr.reset}`;
+		const email = `${clr.bold}${padVisible(acc.email || "unknown", W_EMAIL - 1)}${clr.reset}`;
+		const plan = `${clr.magenta}${padVisible(acc.plan || "Free", W_PLAN - 1)}${clr.reset}`;
 
 		// Main Row
+		// Keep data column at original alignment (1 space padding)
 		const mainRowContent =
-			padVisible(num, W_NUM) + padVisible(status, W_STATUS) + email + plan;
+			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + email + " " + plan;
 		lines.push(mainRowContent);
 
 		// Snapshot Data
