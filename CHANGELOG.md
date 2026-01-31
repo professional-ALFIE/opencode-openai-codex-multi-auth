@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.18] - 2026-01-31
+
+**Tool Consolidation release**: finalized renaming of status and account management tools to match the `codex-*` namespace.
+
+### Changed
+- **Tool Consolidation**: renamed `openai-accounts` and `status-codex` to a single authoritative `codex-status` tool.
+- **Account Management**: renamed `openai-accounts-switch` to `codex-switch-accounts` and `openai-accounts-toggle` to `codex-toggle-account`.
+- **Lazy Refresh**: tool calls now only refresh tokens if they are within the `tokenRefreshSkewMs` window (default 60s), reducing unnecessary network roundtrips.
+- **Code Hardening**: implemented SSE stream memory guards (1MB buffer limit) and removed redundant imports and logic in `index.ts`.
+
 ## [4.5.17] - 2026-01-31
 
 **Authoritative Status release**: active fetching from official OpenAI `/wham/usage` endpoints and perfect protocol alignment.
