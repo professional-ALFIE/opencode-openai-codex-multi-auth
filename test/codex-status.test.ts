@@ -30,9 +30,9 @@ describe("CodexStatusManager", () => {
 		}
 	});
 
-	it("parses valid headers and stores snapshot", () => {
+	it("parses valid headers and stores snapshot", async () => {
 		const manager = new CodexStatusManager();
-		manager.updateFromHeaders(mockAccount, {
+		await manager.updateFromHeaders(mockAccount, {
 			"x-codex-primary-used-percent": "45.5",
 			"x-codex-primary-window-minutes": "300",
 			"x-codex-primary-reset-at": "123456789",
@@ -41,7 +41,7 @@ describe("CodexStatusManager", () => {
 			"x-codex-credits-balance": "15.5",
 		});
 
-		const snapshot = manager.getSnapshot(mockAccount);
+		const snapshot = await manager.getSnapshot(mockAccount);
 		expect(snapshot).not.toBeNull();
 		expect(snapshot?.primary?.usedPercent).toBe(45.5);
 		expect(snapshot?.primary?.windowMinutes).toBe(300);
@@ -49,80 +49,7 @@ describe("CodexStatusManager", () => {
 		expect(snapshot?.credits?.unlimited).toBe(false);
 	});
 
-	it("clumps usedPercent to 0-100", () => {
-		const manager = new CodexStatusManager();
-		manager.updateFromHeaders(mockAccount, {
-			"x-codex-primary-used-percent": "150",
-			"x-codex-secondary-used-percent": "-50",
-		});
-
-		const snapshot = manager.getSnapshot(mockAccount);
-		expect(snapshot?.primary?.usedPercent).toBe(100);
-		expect(snapshot?.secondary?.usedPercent).toBe(0);
-	});
-
-	it("tracks staleness", () => {
-		vi.useFakeTimers();
-		try {
-			const manager = new CodexStatusManager();
-			manager.updateFromHeaders(mockAccount, {
-				"x-codex-primary-used-percent": "10",
-			});
-
-			expect(manager.getSnapshot(mockAccount)?.isStale).toBe(false);
-
-			// Advance 16 minutes (TTL is 15)
-			vi.advanceTimersByTime(16 * 60 * 1000);
-			expect(manager.getSnapshot(mockAccount)?.isStale).toBe(true);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("merges partial headers with existing data", () => {
-		const manager = new CodexStatusManager();
-		manager.updateFromHeaders(mockAccount, {
-			"x-codex-primary-used-percent": "10",
-			"x-codex-primary-window-minutes": "300",
-		});
-
-		manager.updateFromHeaders(mockAccount, {
-			"x-codex-primary-used-percent": "20",
-		});
-
-		const snapshot = manager.getSnapshot(mockAccount);
-		expect(snapshot?.primary?.usedPercent).toBe(20);
-		expect(snapshot?.primary?.windowMinutes).toBe(300); // Preserved from previous update
-	});
-
-	it("renders status bars correctly", () => {
-		const manager = new CodexStatusManager();
-		manager.updateFromHeaders(mockAccount, {
-			"x-codex-primary-used-percent": "50",
-			"x-codex-primary-window-minutes": "0", // Force Primary label
-			"x-codex-secondary-used-percent": "25",
-			"x-codex-credits-unlimited": "true",
-		});
-
-		const lines = manager.renderStatus(mockAccount);
-		// Check for key components rather than exact string formatting which is fragile
-		expect(lines.some(l => l.includes("Primary") && l.includes("50.0%"))).toBe(true);
-		expect(lines.some(l => l.includes("Weekly") && l.includes("25.0%"))).toBe(true);
-		expect(lines.some(l => l.includes("Credits") && l.includes("unlimited"))).toBe(true);
-	});
-
-	it("persists snapshots to disk and reloads them", () => {
-		const manager1 = new CodexStatusManager();
-		manager1.updateFromHeaders(mockAccount, {
-			"x-codex-primary-used-percent": "75",
-		});
-
-		const manager2 = new CodexStatusManager();
-		const snapshot = manager2.getSnapshot(mockAccount);
-		expect(snapshot?.primary?.usedPercent).toBe(75);
-	});
-
-	it("loads data from fixture and matches snapshots", () => {
+	it("loads data from fixture and matches snapshots", async () => {
 		const fixtureData = JSON.parse(readFileSync(SNAPSHOT_FIXTURE_PATH, "utf-8"));
 		const cachePath = getCachePath("codex-snapshots.json");
 		
@@ -140,7 +67,7 @@ describe("CodexStatusManager", () => {
 			addedAt: 0,
 			lastUsed: 0,
 		};
-		const snap1 = manager.getSnapshot(account1);
+		const snap1 = await manager.getSnapshot(account1);
 		expect(snap1?.primary?.usedPercent).toBe(45.5);
 		expect(snap1?.secondary?.windowMinutes).toBe(10080);
 
@@ -153,7 +80,7 @@ describe("CodexStatusManager", () => {
 			addedAt: 0,
 			lastUsed: 0,
 		};
-		const snap2 = manager.getSnapshot(account2);
+		const snap2 = await manager.getSnapshot(account2);
 		expect(snap2?.primary?.usedPercent).toBe(0);
 		expect(snap2?.credits?.balance).toBe(15.5);
 
@@ -166,12 +93,12 @@ describe("CodexStatusManager", () => {
 			addedAt: 0,
 			lastUsed: 0,
 		};
-		const snap3 = manager.getSnapshot(account3);
+		const snap3 = await manager.getSnapshot(account3);
 		expect(snap3?.primary?.usedPercent).toBe(100);
 		expect(snap3?.credits?.unlimited).toBe(true);
 	});
 
-	it("updates snapshots correctly from raw header fixture", () => {
+	it("updates snapshots correctly from raw header fixture", async () => {
 		const fixture = JSON.parse(readFileSync(HEADERS_FIXTURE_PATH, "utf-8"));
 		const manager = new CodexStatusManager();
 
@@ -182,11 +109,84 @@ describe("CodexStatusManager", () => {
 				addedAt: 0,
 				lastUsed: 0,
 			};
-			manager.updateFromHeaders(account, item.raw);
+			await manager.updateFromHeaders(account, item.raw);
 			
-			const snapshot = manager.getSnapshot(account);
+			const snapshot = await manager.getSnapshot(account);
 			expect(snapshot).not.toBeNull();
 			expect(snapshot?.primary?.usedPercent).toBe(Number(item.raw["x-codex-primary-used-percent"]));
 		}
+	});
+
+	it("clumps usedPercent to 0-100", async () => {
+		const manager = new CodexStatusManager();
+		await manager.updateFromHeaders(mockAccount, {
+			"x-codex-primary-used-percent": "150",
+			"x-codex-secondary-used-percent": "-50",
+		});
+
+		const snapshot = await manager.getSnapshot(mockAccount);
+		expect(snapshot?.primary?.usedPercent).toBe(100);
+		expect(snapshot?.secondary?.usedPercent).toBe(0);
+	});
+
+	it("tracks staleness", async () => {
+		vi.useFakeTimers();
+		try {
+			const manager = new CodexStatusManager();
+			await manager.updateFromHeaders(mockAccount, {
+				"x-codex-primary-used-percent": "10",
+			});
+
+			expect((await manager.getSnapshot(mockAccount))?.isStale).toBe(false);
+
+			// Advance 16 minutes (TTL is 15)
+			vi.advanceTimersByTime(16 * 60 * 1000);
+			expect((await manager.getSnapshot(mockAccount))?.isStale).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("merges partial headers with existing data", async () => {
+		const manager = new CodexStatusManager();
+		await manager.updateFromHeaders(mockAccount, {
+			"x-codex-primary-used-percent": "10",
+			"x-codex-primary-window-minutes": "300",
+		});
+
+		await manager.updateFromHeaders(mockAccount, {
+			"x-codex-primary-used-percent": "20",
+		});
+
+		const snapshot = await manager.getSnapshot(mockAccount);
+		expect(snapshot?.primary?.usedPercent).toBe(20);
+		expect(snapshot?.primary?.windowMinutes).toBe(300); // Preserved from previous update
+	});
+
+	it("renders status bars correctly", async () => {
+		const manager = new CodexStatusManager();
+		await manager.updateFromHeaders(mockAccount, {
+			"x-codex-primary-used-percent": "50",
+			"x-codex-primary-window-minutes": "0", // Force Primary label
+			"x-codex-secondary-used-percent": "25",
+			"x-codex-credits-unlimited": "true",
+		});
+
+		const lines = await manager.renderStatus(mockAccount);
+		// Check for key components rather than exact string formatting which is fragile
+		expect(lines.some(l => l.includes("Primary") && l.includes("50.0%"))).toBe(true);
+		expect(lines.some(l => l.includes("Weekly") && l.includes("25.0%"))).toBe(true);
+		expect(lines.some(l => l.includes("Credits") && l.includes("unlimited"))).toBe(true);
+	});
+
+	it("persists snapshots to disk and reloads them", async () => {
+		const manager1 = new CodexStatusManager();
+		await manager1.updateFromHeaders(mockAccount, {
+			"x-codex-primary-used-percent": "75",
+		});
+
+		const manager2 = new CodexStatusManager();
+		const snapshot = await manager2.getSnapshot(mockAccount);
+		expect(snapshot?.primary?.usedPercent).toBe(75);
 	});
 });

@@ -629,7 +629,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 												codexHeaders[key] = val;
 											}
 										});
-										codexStatus.updateFromHeaders(account, codexHeaders);
+										await codexStatus.updateFromHeaders(account, codexHeaders);
 									} catch (err) {
 										if (tokenConsumed) {
 											getTokenTracker().refund(account.index);
@@ -753,8 +753,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								"Account Status:",
 							];
 
-							accounts.forEach((acc, idx) => {
-								if (acc.enabled === false) return;
+							for (let idx = 0; idx < accounts.length; idx++) {
+								const acc = accounts[idx];
+								if (!acc || acc.enabled === false) continue;
 								const label = formatAccountLabel(acc, idx);
 								const rateLimited =
 									acc.rateLimitResetTimes &&
@@ -769,11 +770,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								else if (coolingDown) status = "cooldown";
 
 								statusLines.push(`- ${label} [${status}]`);
-								const codexLines = codexStatus.renderStatus(acc);
+								const codexLines = await codexStatus.renderStatus(acc);
 								if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
 									statusLines.push(...codexLines.map((l) => "  " + l.trim()));
 								}
-							});
+							}
 
 							statusLines.push("", "Run `opencode auth login` to add more accounts.");
 
@@ -1261,7 +1262,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					` #  Label                                     Status`,
 					`--- ----------------------------------------- ---------------------`,
 				];
-				storage.accounts.forEach((account, index) => {
+				for (let index = 0; index < storage.accounts.length; index++) {
+					const account = storage.accounts[index];
+					if (!account) continue;
 					const label = formatAccountLabel(account, index);
 					const statuses: string[] = [];
 					if (index === activeIndex) statuses.push("active");
@@ -1285,10 +1288,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					);
 
 					// Add Codex status details
-					const codexLines = codexStatus.renderStatus(account);
+					const codexLines = await codexStatus.renderStatus(account);
 					lines.push(...codexLines);
 					lines.push(""); // Spacer between accounts
-				});
+				}
 				lines.push(`Storage: ${storagePath}`);
 				return lines.join("\n");
 			},
@@ -1305,7 +1308,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const activeIndex = storage.activeIndex ?? 0;
 				const now = Date.now();
 				const lines: string[] = ["OpenAI Codex Accounts Status:"];
-				storage.accounts.forEach((account, index) => {
+				for (let index = 0; index < storage.accounts.length; index++) {
+					const account = storage.accounts[index];
+					if (!account) continue;
 					const label = formatAccountLabel(account, index);
 					const rateLimited =
 						account.rateLimitResetTimes &&
@@ -1322,11 +1327,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					else if (coolingDown) status = "cooldown";
 
 					lines.push(`${index === activeIndex ? "*" : "-"} ${label} [${status}]`);
-					const codexLines = codexStatus.renderStatus(account);
+					const codexLines = await codexStatus.renderStatus(account);
 					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
 						lines.push(...codexLines);
 					}
-				});
+				}
 				return lines.join("\n");
 			},
 		}),

@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
+import lockfile from "proper-lockfile";
 import { type AccountRecordV3 } from "./types.js";
 import { getCachePath } from "./storage.js";
 
@@ -29,14 +30,25 @@ export interface CodexRateLimitSnapshot {
 const STALENESS_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const SNAPSHOTS_FILE = "codex-snapshots.json";
 
+const LOCK_OPTIONS = {
+	stale: 10_000,
+	retries: {
+		retries: 5,
+		minTimeout: 100,
+		maxTimeout: 1000,
+		factor: 2,
+	},
+	realpath: false,
+};
+
 export class CodexStatusManager {
 	private snapshots = new Map<string, CodexRateLimitSnapshot>();
 	private initialized = false;
 
-	private ensureInitialized(): void {
+	private async ensureInitialized(): Promise<void> {
 		if (this.initialized) return;
 		this.initialized = true;
-		this.loadFromDisk();
+		await this.loadFromDisk();
 	}
 
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
@@ -47,8 +59,11 @@ export class CodexStatusManager {
 		return account.refreshToken || "unknown";
 	}
 
-	updateFromHeaders(account: AccountRecordV3, headers: Record<string, string | string[] | undefined>): void {
-		this.ensureInitialized();
+	async updateFromHeaders(
+		account: AccountRecordV3,
+		headers: Record<string, string | string[] | undefined>,
+	): Promise<void> {
+		await this.ensureInitialized();
 		const getHeader = (name: string): string | undefined => {
 			const val = headers[name] || headers[name.toLowerCase()];
 			return Array.isArray(val) ? val[0] : val;
@@ -112,11 +127,13 @@ export class CodexStatusManager {
 		};
 
 		this.snapshots.set(key, snapshot);
-		this.saveToDisk();
+		await this.saveToDisk();
 	}
 
-	getSnapshot(account: AccountRecordV3): (CodexRateLimitSnapshot & { isStale: boolean }) | null {
-		this.ensureInitialized();
+	async getSnapshot(
+		account: AccountRecordV3,
+	): Promise<(CodexRateLimitSnapshot & { isStale: boolean }) | null> {
+		await this.ensureInitialized();
 		const key = this.getSnapshotKey(account);
 		const snapshot = this.snapshots.get(key);
 		if (!snapshot) return null;
@@ -127,13 +144,13 @@ export class CodexStatusManager {
 		};
 	}
 
-	getAllSnapshots(): CodexRateLimitSnapshot[] {
-		this.ensureInitialized();
+	async getAllSnapshots(): Promise<CodexRateLimitSnapshot[]> {
+		await this.ensureInitialized();
 		return Array.from(this.snapshots.values());
 	}
 
-	renderStatus(account: AccountRecordV3): string[] {
-		const snapshot = this.getSnapshot(account);
+	async renderStatus(account: AccountRecordV3): Promise<string[]> {
+		const snapshot = await this.getSnapshot(account);
 		if (!snapshot) {
 			return ["  No Codex status data yet"];
 		}
@@ -178,11 +195,11 @@ export class CodexStatusManager {
 		return lines;
 	}
 
-	private loadFromDisk(): void {
+	private async loadFromDisk(): Promise<void> {
 		const path = getCachePath(SNAPSHOTS_FILE);
 		if (!existsSync(path)) return;
 		try {
-			const data = JSON.parse(readFileSync(path, "utf-8"));
+			const data = JSON.parse(await fs.readFile(path, "utf-8"));
 			if (Array.isArray(data)) {
 				this.snapshots = new Map(data);
 			}
@@ -191,19 +208,54 @@ export class CodexStatusManager {
 		}
 	}
 
-	private saveToDisk(): void {
+	private async saveToDisk(): Promise<void> {
 		const path = getCachePath(SNAPSHOTS_FILE);
+		const dir = dirname(path);
+
 		try {
-			const dir = dirname(path);
 			if (!existsSync(dir)) {
-				mkdirSync(dir, { recursive: true });
+				await fs.mkdir(dir, { recursive: true });
 			}
-			const data = JSON.stringify(Array.from(this.snapshots.entries()), null, 2);
-			const tmpPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
-			writeFileSync(tmpPath, data, "utf-8");
-			renameSync(tmpPath, path);
-		} catch {
-			// ignore save errors
+
+			// Ensure file exists for lock
+			if (!existsSync(path)) {
+				await fs.writeFile(path, "[]", "utf-8");
+			}
+
+			let release: (() => Promise<void>) | null = null;
+			try {
+				release = await lockfile.lock(path, LOCK_OPTIONS);
+				// Re-load snapshots from disk before merging and saving to avoid lost updates
+				try {
+					const diskData = JSON.parse(await fs.readFile(path, "utf-8"));
+					if (Array.isArray(diskData)) {
+						const diskMap = new Map<string, CodexRateLimitSnapshot>(diskData);
+						// Merge memory into disk data (memory wins for existing keys)
+						for (const [key, value] of this.snapshots) {
+							diskMap.set(key, value);
+						}
+						// Update local cache
+						this.snapshots = diskMap;
+					}
+				} catch {
+					// fallback to just saving what we have
+				}
+
+				const data = JSON.stringify(Array.from(this.snapshots.entries()), null, 2);
+				const tmpPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+				await fs.writeFile(tmpPath, data, "utf-8");
+				await fs.chmod(tmpPath, 0o600);
+				await fs.rename(tmpPath, path);
+			} finally {
+				if (release) {
+					await release().catch(() => undefined);
+				}
+			}
+		} catch (error) {
+			// ignore save errors but log if debug
+			if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+				console.error("[CodexStatus] Failed to save snapshots:", error);
+			}
 		}
 	}
 }
