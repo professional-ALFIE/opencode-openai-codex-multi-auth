@@ -624,12 +624,27 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										res = await fetch(url, { ...requestInit, headers });
 										// Update Codex rate limit snapshot from response headers
 										const codexHeaders: Record<string, string> = {};
-										res.headers.forEach((val, key) => {
-											if (key.toLowerCase().startsWith("x-codex-")) {
-												codexHeaders[key] = val;
+										try {
+											res.headers.forEach((val, key) => {
+												if (key.toLowerCase().startsWith("x-codex-")) {
+													codexHeaders[key.toLowerCase()] = val;
+												}
+											});
+											// Fallback for environments where forEach is restricted
+											if (Object.keys(codexHeaders).length === 0) {
+												for (const [key, val] of res.headers.entries()) {
+													if (key.toLowerCase().startsWith("x-codex-")) {
+														codexHeaders[key.toLowerCase()] = val;
+													}
+												}
 											}
-										});
-										await codexStatus.updateFromHeaders(account, codexHeaders);
+										} catch (hErr) {
+											debugAuth("[CodexStatus] Error reading headers:", hErr);
+										}
+
+										if (Object.keys(codexHeaders).length > 0) {
+											await codexStatus.updateFromHeaders(account, codexHeaders);
+										}
 									} catch (err) {
 										if (tokenConsumed) {
 											getTokenTracker().refund(account.index);

@@ -207,11 +207,11 @@ export class CodexStatusManager {
 					resetStr = ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
 				}
 			} else if (!data) {
-				return `  ${label.padEnd(8)} [${"░".repeat(width)}] unknown`;
+				return `  ${label.padEnd(8)} [${"░".repeat(width)}] unknown`.padEnd(52);
 			}
 
 			const statusStr = `${usedPercent.toFixed(1)}%`.padEnd(7);
-			return `  ${label.padEnd(8)} [${bar}] ${statusStr}${resetStr}${staleLabel}`;
+			return `  ${label.padEnd(8)} [${bar}] ${statusStr}${resetStr}${staleLabel}`.padEnd(52);
 		};
 
 		if (!snapshot) {
@@ -230,6 +230,11 @@ export class CodexStatusManager {
 			const { unlimited, balance } = snapshot.credits;
 			const creditStr = unlimited ? "unlimited" : `${balance.toFixed(2)} credits`;
 			lines.push(`  Credits  ${creditStr}${staleLabel}`);
+		}
+
+		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			const updateTime = new Date(snapshot.updatedAt);
+			lines.push(`  Updated  ${updateTime.getHours()}:${String(updateTime.getMinutes()).padStart(2, "0")}:${String(updateTime.getSeconds()).padStart(2, "0")}`);
 		}
 
 		return lines;
