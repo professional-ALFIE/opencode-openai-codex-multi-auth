@@ -743,15 +743,47 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								continue;
 							}
 
-							const message = formatRateLimitStatusMessage({
-								accountCount: accountManager.getAccountCount(),
-								waitMs,
-								storagePath: getStoragePath(),
+							// Build detailed inline error message
+							const now = Date.now();
+							const accounts = accountManager.getAccountsSnapshot();
+							const statusLines: string[] = [
+								`All ${accountManager.getAccountCount()} account(s) are currently unavailable.`,
+								`Next reset in approximately ${formatWaitTime(waitMs)}.`,
+								"",
+								"Account Status:",
+							];
+
+							accounts.forEach((acc, idx) => {
+								if (acc.enabled === false) return;
+								const label = formatAccountLabel(acc, idx);
+								const rateLimited =
+									acc.rateLimitResetTimes &&
+									Object.values(acc.rateLimitResetTimes).some(
+										(t) => typeof t === "number" && t > now,
+									);
+								const coolingDown =
+									typeof acc.coolingDownUntil === "number" && acc.coolingDownUntil > now;
+
+								let status = "ok";
+								if (rateLimited) status = "rate-limited";
+								else if (coolingDown) status = "cooldown";
+
+								statusLines.push(`- ${label} [${status}]`);
+								const codexLines = codexStatus.renderStatus(acc);
+								if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
+									statusLines.push(...codexLines.map((l) => "  " + l.trim()));
+								}
 							});
-							return new Response(JSON.stringify({ error: { message } }), {
-								status: 429,
-								headers: { "content-type": "application/json; charset=utf-8" },
-							});
+
+							statusLines.push("", "Run `opencode auth login` to add more accounts.");
+
+							return new Response(
+								JSON.stringify({ error: { message: statusLines.join("\n") } }),
+								{
+									status: 429,
+									headers: { "content-type": "application/json; charset=utf-8" },
+								},
+							);
 						}
 
 					},
@@ -1258,6 +1290,43 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					lines.push(""); // Spacer between accounts
 				});
 				lines.push(`Storage: ${storagePath}`);
+				return lines.join("\n");
+			},
+		}),
+		"status-codex": tool({
+			description: "Show a compact inline status of all OpenAI Codex accounts.",
+			args: {},
+			async execute() {
+				configureStorageForCurrentCwd();
+				const storage = await loadAccounts();
+				if (!storage || storage.accounts.length === 0) {
+					return "No OpenAI accounts configured. Run `opencode auth login`.";
+				}
+				const activeIndex = storage.activeIndex ?? 0;
+				const now = Date.now();
+				const lines: string[] = ["OpenAI Codex Accounts Status:"];
+				storage.accounts.forEach((account, index) => {
+					const label = formatAccountLabel(account, index);
+					const rateLimited =
+						account.rateLimitResetTimes &&
+						Object.values(account.rateLimitResetTimes).some(
+							(t) => typeof t === "number" && t > now,
+						);
+					const coolingDown =
+						typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now;
+					const disabled = account.enabled === false;
+
+					let status = "ok";
+					if (disabled) status = "disabled";
+					else if (rateLimited) status = "rate-limited";
+					else if (coolingDown) status = "cooldown";
+
+					lines.push(`${index === activeIndex ? "*" : "-"} ${label} [${status}]`);
+					const codexLines = codexStatus.renderStatus(account);
+					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
+						lines.push(...codexLines);
+					}
+				});
 				return lines.join("\n");
 			},
 		}),

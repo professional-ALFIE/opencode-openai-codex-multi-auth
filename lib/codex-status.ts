@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { type AccountRecordV3 } from "./types.js";
 
 export interface CodexRateLimitSnapshot {
@@ -32,11 +31,8 @@ export class CodexStatusManager {
 		if (account.accountId && account.email && account.plan) {
 			return `${account.accountId}|${account.email}|${account.plan}`;
 		}
-		// Fallback to a hash of the refresh token if identity is missing (security hardening)
-		if (account.refreshToken) {
-			return createHash("sha256").update(account.refreshToken).digest("hex");
-		}
-		return "unknown";
+		// Use refresh token as stable key for legacy accounts (standard in this codebase)
+		return account.refreshToken || "unknown";
 	}
 
 	updateFromHeaders(account: AccountRecordV3, headers: Record<string, string | string[] | undefined>): void {
