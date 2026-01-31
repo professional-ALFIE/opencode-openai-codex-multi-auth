@@ -180,12 +180,8 @@ export class CodexStatusManager {
 
 	async renderStatus(account: AccountRecordV3): Promise<string[]> {
 		const snapshot = await this.getSnapshot(account);
-		if (!snapshot) {
-			return ["  No Codex status data yet"];
-		}
-
 		const lines: string[] = [];
-		const staleLabel = snapshot.isStale ? " (stale)" : "";
+		const staleLabel = snapshot?.isStale ? " (stale)" : "";
 
 		const formatWindow = (mins: number) => {
 			if (mins <= 0) return null;
@@ -195,13 +191,14 @@ export class CodexStatusManager {
 		};
 
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null) => {
-			if (!data) return null;
 			const width = 20;
-			const filled = Math.round((data.usedPercent / 100) * width);
+			const usedPercent = data?.usedPercent ?? 0;
+			const filled = Math.round((usedPercent / 100) * width);
 			const bar = "█".repeat(filled) + "░".repeat(width - filled);
-			const resetDate = new Date(data.resetAt);
+			
 			let resetStr = "";
-			if (data.resetAt > 0) {
+			if (data && data.resetAt > 0) {
+				const resetDate = new Date(data.resetAt);
 				const now = Date.now();
 				const isMoreThan24h = data.resetAt - now > 24 * 60 * 60 * 1000;
 				if (isMoreThan24h) {
@@ -209,17 +206,24 @@ export class CodexStatusManager {
 				} else {
 					resetStr = ` (reset ${resetDate.getHours()}:${String(resetDate.getMinutes()).padStart(2, "0")})`;
 				}
+			} else if (!data) {
+				return `  ${label.padEnd(8)} [${"░".repeat(width)}] unknown`;
 			}
-			return `  ${label.padEnd(8)} [${bar}] ${data.usedPercent.toFixed(1)}%${resetStr}${staleLabel}`;
+			
+			return `  ${label.padEnd(8)} [${bar}] ${usedPercent.toFixed(1)}%${resetStr}${staleLabel}`;
 		};
 
+		if (!snapshot) {
+			lines.push(renderBar("Primary", null)!);
+			lines.push(renderBar("Weekly", null)!);
+			return lines;
+		}
+
 		const primaryLabel = formatWindow(snapshot.primary?.windowMinutes || 0) || "Primary";
-		const primaryLine = renderBar(primaryLabel, snapshot.primary);
-		if (primaryLine) lines.push(primaryLine);
+		lines.push(renderBar(primaryLabel, snapshot.primary)!);
 
 		const secondaryLabel = formatWindow(snapshot.secondary?.windowMinutes || 0) || "Weekly";
-		const secondaryLine = renderBar(secondaryLabel, snapshot.secondary);
-		if (secondaryLine) lines.push(secondaryLine);
+		lines.push(renderBar(secondaryLabel, snapshot.secondary)!);
 
 		if (snapshot.credits) {
 			const { unlimited, balance } = snapshot.credits;

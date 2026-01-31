@@ -1220,11 +1220,17 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			args: {},
 			async execute() {
 				configureStorageForCurrentCwd();
-				const storage = await loadAccounts();
+				const accountManager = await AccountManager.loadFromDisk();
+				// Ensure accounts are hydrated (refreshes tokens if identity is missing)
+				await accountManager.hydrateMissingEmails();
+				await accountManager.saveToDisk();
+				
+				const accounts = accountManager.getAccountsSnapshot();
+				const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2"); // Fallback family for active index
 				const { scope, storagePath } = getStorageScope();
 				const scopeLabel = scope === "project" ? "project" : "global";
 
-				if (!storage || storage.accounts.length === 0) {
+				if (accounts.length === 0) {
 					return [
 						`OpenAI Codex Status`,
 						``,
@@ -1238,13 +1244,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					].join("\n");
 				}
 
-				const activeIndex =
-					typeof storage.activeIndex === "number" && Number.isFinite(storage.activeIndex)
-						? storage.activeIndex
-						: 0;
 				const now = Date.now();
-				const enabledCount = storage.accounts.filter((a) => a.enabled !== false).length;
-				const rateLimitedCount = storage.accounts.filter(
+				const enabledCount = accounts.filter((a) => a.enabled !== false).length;
+				const rateLimitedCount = accounts.filter(
 					(a) =>
 						a.rateLimitResetTimes &&
 						Object.values(a.rateLimitResetTimes).some(
@@ -1256,14 +1258,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					`OpenAI Codex Status`,
 					``,
 					`  Scope: ${scopeLabel}`,
-					`  Accounts: ${enabledCount}/${storage.accounts.length} enabled`,
+					`  Accounts: ${enabledCount}/${accounts.length} enabled`,
 					...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
 					``,
 					` #   Account                                   Plan       Status`,
 					`---  ----------------------------------------- ---------- ---------------------`,
 				];
-				for (let index = 0; index < storage.accounts.length; index++) {
-					const account = storage.accounts[index];
+				for (let index = 0; index < accounts.length; index++) {
+					const account = accounts[index];
 					if (!account) continue;
 					const email = account.email || "unknown";
 					const plan = account.plan || "Free";
@@ -1283,7 +1285,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						statuses.push("cooldown");
 					}
 					lines.push(
-						`${String(index + 1).padEnd(3)} ${email.padEnd(41)} ${plan.padEnd(10)} ${
+						`${String(index + 1).padStart(2)}   ${email.padEnd(41)} ${plan.padEnd(10)} ${
 							statuses.length > 0 ? statuses.join(", ") : "ok"
 						}`,
 					);
@@ -1302,15 +1304,19 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			args: {},
 			async execute() {
 				configureStorageForCurrentCwd();
-				const storage = await loadAccounts();
-				if (!storage || storage.accounts.length === 0) {
+				const accountManager = await AccountManager.loadFromDisk();
+				await accountManager.hydrateMissingEmails();
+				await accountManager.saveToDisk();
+
+				const accounts = accountManager.getAccountsSnapshot();
+				if (accounts.length === 0) {
 					return "No OpenAI accounts configured. Run `opencode auth login`.";
 				}
-				const activeIndex = storage.activeIndex ?? 0;
+				const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
 				const now = Date.now();
 				const lines: string[] = ["OpenAI Codex Accounts Status:"];
-				for (let index = 0; index < storage.accounts.length; index++) {
-					const account = storage.accounts[index];
+				for (let index = 0; index < accounts.length; index++) {
+					const account = accounts[index];
 					if (!account) continue;
 					const email = account.email || "unknown";
 					const plan = account.plan || "Free";
@@ -1335,6 +1341,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				return lines.join("\n");
 			},
 		}),
+
 			"openai-accounts-switch": tool({
 				description: "Switch active OpenAI account by index (1-based).",
 				args: {
