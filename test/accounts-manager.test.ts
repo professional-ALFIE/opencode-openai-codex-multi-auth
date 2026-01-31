@@ -367,7 +367,9 @@ describe("AccountManager", () => {
 					idToken,
 				});
 
-			await AccountManager.loadFromDisk();
+			const manager = await AccountManager.loadFromDisk();
+			await manager.hydrateMissingEmails();
+			await manager.saveToDisk();
 
 			const migrated = await loadAccounts();
 			const updated = migrated?.accounts.find(
@@ -400,24 +402,22 @@ describe("AccountManager", () => {
 				plan: undefined,
 				enabled: false,
 			};
-			const storage: AccountStorageV3 = {
+			writeFileSync(join(root, "opencode", "openai-codex-accounts.json"), JSON.stringify({
 				version: 3,
 				accounts: [legacy],
-				activeIndex: 0,
-				activeIndexByFamily: { codex: 0 },
-			};
-			writeFileSync(getStoragePath(), JSON.stringify(storage, null, 2), "utf-8");
+				activeIndex: 0
+			}));
 
-			const refreshSpy = vi
-				.spyOn(authModule, "refreshAccessToken")
-				.mockResolvedValue({ type: "failed" } as const);
-			await AccountManager.loadFromDisk();
+			const refreshSpy = vi.spyOn(authModule, "refreshAccessToken");
+			const manager = await AccountManager.loadFromDisk();
+			await manager.hydrateMissingEmails();
+			
 			expect(refreshSpy).not.toHaveBeenCalled();
-			refreshSpy.mockRestore();
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
 
 	it("saveToDisk remaps active indices to merged accounts", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));

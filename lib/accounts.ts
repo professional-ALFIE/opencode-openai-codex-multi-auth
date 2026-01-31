@@ -181,62 +181,6 @@ function isRateLimitedForFamily(
 	return isRateLimitedForQuotaKey(account, baseKey);
 }
 
-async function migrateLegacyAccounts(storage: AccountStorageV3): Promise<AccountStorageV3> {
-	const needsMigration = storage.accounts.some((record) => !hasCompleteIdentity(record));
-	if (!needsMigration) return storage;
-
-	let updated = false;
-	const migratedAccounts: AccountStorageV3["accounts"] = [];
-
-	for (const record of storage.accounts) {
-		if (record.enabled === false) {
-			migratedAccounts.push(record);
-			continue;
-		}
-		if (hasCompleteIdentity(record)) {
-			migratedAccounts.push(record);
-			continue;
-		}
-		if (!record.refreshToken) {
-			migratedAccounts.push(record);
-			continue;
-		}
-		const result = await refreshAccessToken(record.refreshToken);
-		if (result.type !== "success") {
-			migratedAccounts.push(record);
-			continue;
-		}
-		const token = result.idToken ?? result.access;
-		const accountId = extractAccountId(token);
-		const email = sanitizeEmail(extractAccountEmail(token));
-		const plan = extractAccountPlan(token);
-		if (!accountId || !email || !plan) {
-			migratedAccounts.push(record);
-			continue;
-		}
-
-		updated = true;
-		migratedAccounts.push({
-			...record,
-			accountId,
-			email,
-			plan,
-			refreshToken: result.refresh,
-		});
-	}
-
-	if (!updated) return storage;
-	const backupPath = await backupAccountsFile();
-	if (!backupPath) return storage;
-
-	const migrated: AccountStorageV3 = {
-		...storage,
-		accounts: migratedAccounts,
-	};
-	await saveAccounts(migrated);
-	return migrated;
-}
-
 function mergeAccountRecords(
 	existing: AccountStorageV3["accounts"],
 	incoming: ManagedAccount[],
@@ -381,8 +325,7 @@ export class AccountManager {
 
 	static async loadFromDisk(authFallback?: OAuthAuthDetails): Promise<AccountManager> {
 		const stored = await loadAccounts();
-		const migrated = stored ? await migrateLegacyAccounts(stored) : stored;
-		return new AccountManager(authFallback, migrated);
+		return new AccountManager(authFallback, stored);
 	}
 
 	constructor(authFallback?: OAuthAuthDetails, stored?: AccountStorageV3 | null) {

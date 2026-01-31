@@ -195,7 +195,7 @@ export class CodexStatusManager {
 			const usedPercent = data?.usedPercent ?? 0;
 			const filled = Math.round((usedPercent / 100) * width);
 			const bar = "█".repeat(filled) + "░".repeat(width - filled);
-			
+
 			let resetStr = "";
 			if (data && data.resetAt > 0) {
 				const resetDate = new Date(data.resetAt);
@@ -209,8 +209,9 @@ export class CodexStatusManager {
 			} else if (!data) {
 				return `  ${label.padEnd(8)} [${"░".repeat(width)}] unknown`;
 			}
-			
-			return `  ${label.padEnd(8)} [${bar}] ${usedPercent.toFixed(1)}%${resetStr}${staleLabel}`;
+
+			const statusStr = `${usedPercent.toFixed(1)}%`.padEnd(7);
+			return `  ${label.padEnd(8)} [${bar}] ${statusStr}${resetStr}${staleLabel}`;
 		};
 
 		if (!snapshot) {
