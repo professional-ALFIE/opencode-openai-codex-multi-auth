@@ -8,16 +8,22 @@ All notable changes to this project are documented here. Dates use the ISO forma
 
 ### Added
 - **Active Usage Fetching**: tools now actively fetch real-time rate limit data from `https://chatgpt.com/backend-api/wham/usage` (ChatGPT plans) and `https://api.openai.com/api/codex/usage` (API plans).
-- **Protocol Alignment**: refactored `CodexStatusManager` to match the official `codex-rs` data structures, including `primary_window`, `secondary_window`, and Unix seconds-based timestamps.
+- **Protocol Alignment**: refactored `CodexStatusManager` to match the official `codex-rs v0.92.0` data structures and TUI formatting.
+- **Detailed Reset Dates**: long-term resets (>24h) now display the full date and time (e.g., `resets 18:10 on 5 Feb`).
 
 ### Changed
+- **Inverted Usage Display**: status bars now show **"% left"** instead of "% used", correctly representing remaining quota.
+- **Standardized Labels**: updated window labels to "5 hour limit:" and "Weekly limit:".
 - **Proactive Tool Hydration**: tool calls now force a token refresh and identity repair to ensure the authoritative `/usage` endpoint receives a valid Bearer token.
 - **Enhanced UI Alignment**: applied strict padding and "Always Render Both" logic to ensure vertical and horizontal table stability even with missing or "unknown" data.
 
 ### Fixed
-- **Stale Data Capture**: replaced the fragile SSE/Header capture fallbacks with reliable polling of the official usage API.
+- **Memory Safety**: added length guards to the SSE stream buffer to prevent memory exhaustion from malformed backend responses.
+- **Stale Data Capture**: replaced fragile SSE/Header capture fallbacks with reliable direct polling of the official usage API.
 
 ## [4.5.16] - 2026-01-31
+
+
 
 ## [4.5.15] - 2026-01-31
 
