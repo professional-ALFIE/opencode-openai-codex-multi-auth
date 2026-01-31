@@ -113,6 +113,7 @@ import { getModelFamily, MODEL_FAMILIES, type ModelFamily } from "./lib/prompts/
 import type { AccountStorageV3, OAuthAuthDetails, TokenResult, TokenSuccess, UserConfig } from "./lib/types.js";
 import { getHealthTracker, getTokenTracker } from "./lib/rotation.js";
 import { RateLimitTracker, decideRateLimitAction, parseRateLimitReason } from "./lib/rate-limit.js";
+import { codexStatus } from "./lib/codex-status.js";
 import {
 	ProactiveRefreshQueue,
 	createRefreshScheduler,
@@ -621,6 +622,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									let res: Response;
 									try {
 										res = await fetch(url, { ...requestInit, headers });
+										// Update Codex rate limit snapshot from response headers
+										codexStatus.updateFromHeaders(
+											account,
+											Object.fromEntries(res.headers.entries()),
+										);
 									} catch (err) {
 										if (tokenConsumed) {
 											getTokenTracker().refund(account.index);
@@ -1242,8 +1248,13 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							statuses.length > 0 ? statuses.join(", ") : "ok"
 						}`,
 					);
+
+					// Add Codex status details
+					const codexLines = codexStatus.renderStatus(account);
+					lines.push(...codexLines);
+					lines.push(""); // Spacer between accounts
 				});
-				lines.push("", `Storage: ${storagePath}`);
+				lines.push(`Storage: ${storagePath}`);
 				return lines.join("\n");
 			},
 		}),
