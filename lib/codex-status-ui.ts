@@ -129,9 +129,8 @@ export function renderObsidianDashboard(
 		// Main Row
 		// Keep data column aligned to original grid (1 space padding)
 		// Header is visually shifted right, data remains left-aligned
-		// Add padding after status to align Email with ACCOUNT header
 		const mainRowContent =
-			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + "  " + email + " " + plan;
+			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + email + " " + plan;
 		lines.push(mainRowContent);
 
 		// Snapshot Data
