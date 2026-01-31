@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.22] - 2026-01-31
+
+**UI Polish release**: New "Obsidian Dashboard" theme for `codex-status`.
+
+### Changed
+- **Visual Overhaul**: `codex-status` now features the "Obsidian Dashboard" theme:
+  - **High-Density Layout**: Clean, wall-less design with perfect grid alignment.
+  - **Status Pills**: Color-coded badges (ACTIVE/ENABLED/DISABLED) for instant status recognition.
+  - **Dynamic Usage Bars**: Quota bars shift color (Blue -> Yellow -> Red) based on consumption.
+  - **Precision Timers**: Reset timers now include dates for long-term limits (e.g., `resets 09:32 on 3 Feb`).
+
 ## [4.5.21] - 2026-01-31
 
 **Parallel Rotation Resilience release**: atomic sync across multiple machine sessions.
