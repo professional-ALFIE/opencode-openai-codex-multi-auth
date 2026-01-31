@@ -43,12 +43,12 @@ const LOCK_OPTIONS = {
 
 export class CodexStatusManager {
 	private snapshots = new Map<string, CodexRateLimitSnapshot>();
-	private initialized = false;
+	private initPromise: Promise<void> | null = null;
 
 	private async ensureInitialized(): Promise<void> {
-		if (this.initialized) return;
-		this.initialized = true;
-		await this.loadFromDisk();
+		if (this.initPromise) return this.initPromise;
+		this.initPromise = this.loadFromDisk();
+		return this.initPromise;
 	}
 
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
@@ -230,11 +230,14 @@ export class CodexStatusManager {
 					const diskData = JSON.parse(await fs.readFile(path, "utf-8"));
 					if (Array.isArray(diskData)) {
 						const diskMap = new Map<string, CodexRateLimitSnapshot>(diskData);
-						// Merge memory into disk data (memory wins for existing keys)
-						for (const [key, value] of this.snapshots) {
-							diskMap.set(key, value);
+						// Merge memory into disk data (newer updatedAt wins)
+						for (const [key, memoryValue] of this.snapshots) {
+							const diskValue = diskMap.get(key);
+							if (!diskValue || memoryValue.updatedAt > diskValue.updatedAt) {
+								diskMap.set(key, memoryValue);
+							}
 						}
-						// Update local cache
+						// Update local cache to reflect current authoritative state
 						this.snapshots = diskMap;
 					}
 				} catch {
