@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.23] - 2026-01-31
+
+**UI fix release**: alignment correction for `codex-status`.
+
+### Fixed
+- **Dashboard Alignment**: corrected the horizontal padding of the Account column in the new Obsidian Dashboard theme to align perfectly with the header.
+
 ## [4.5.22] - 2026-01-31
 
 **UI Polish release**: New "Obsidian Dashboard" theme for `codex-status`.
