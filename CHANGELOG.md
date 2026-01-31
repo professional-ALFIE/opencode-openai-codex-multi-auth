@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
-## [Unreleased]
+## [4.5.24] - 2026-01-31
+
+**UI Polish release**: New "Obsidian Dashboard" theme for `codex-status`.
 
 ### Changed
 - **Visual Overhaul**: `codex-status` now features the "Obsidian Dashboard" theme:

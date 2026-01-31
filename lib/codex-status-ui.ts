@@ -82,17 +82,19 @@ export function renderObsidianDashboard(
 	// New:      "   STATUS" (3 spaces)
 	const hRow =
 		padVisible(`  #`, W_NUM) +
-		padVisible(`   STATUS`, W_STATUS + 1) + 
-		`  ` + // 2 spaces separation
+		padVisible(`   STATUS`, W_STATUS) + 
+		` ` + // +1 Shift for ACCOUNT column
 		padVisible(`ACCOUNT`, W_EMAIL) +
+		` ` + // +1 Shift for PLAN column
 		`PLAN`;
 	lines.push(`${clr.bold}${hRow}${clr.reset}`);
 
 	const divider =
 		padVisible(`  ${"-".repeat(W_NUM - 2)}`, W_NUM) +
-		padVisible("   " + "-".repeat(W_STATUS - 4), W_STATUS + 1) + 
-		`  ` + // 2 spaces separation
+		padVisible("   " + "-".repeat(W_STATUS - 4), W_STATUS) + // Match header shift (3 spaces indent)
+		` ` + // +1 Shift for divider
 		padVisible("-".repeat(W_EMAIL - 1), W_EMAIL) +
+		` ` + // +1 Shift for divider
 		"-".repeat(50); // Extended underline for PLAN + Usage
 	lines.push(`${clr.gray}${divider}${clr.reset}`);
 
@@ -127,10 +129,10 @@ export function renderObsidianDashboard(
 		const plan = `${clr.magenta}${padVisible(acc.plan || "Free", W_PLAN - 1)}${clr.reset}`;
 
 		// Main Row
-		// Keep data column aligned to original grid (1 space padding)
-		// Header is visually shifted right, data remains left-aligned
+		// Keep data column at original alignment (1 space padding)
+		// Add +1 space before email and plan to match headers
 		const mainRowContent =
-			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + email + " " + plan;
+			padVisible(num, W_NUM) + " " + padVisible(status, W_STATUS - 1) + " " + email + " " + plan;
 		lines.push(mainRowContent);
 
 		// Snapshot Data
