@@ -2,7 +2,7 @@ import { promises as fs, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes, createHash } from "node:crypto";
 import lockfile from "proper-lockfile";
-import { type AccountRecordV3 } from "./types.js";
+import { type AccountRecordV3, type CodexWhamUsageResponse } from "./types.js";
 import { getCachePath } from "./storage.js";
 
 export interface CodexRateLimitSnapshot {
@@ -403,8 +403,8 @@ export class CodexStatusManager {
 			});
 
 			if (res.ok) {
-				const json = (await res.json()) as any;
-				
+				const json = (await res.json()) as CodexWhamUsageResponse;
+
 				// Standardize the /wham/usage structure into our internal snapshot
 				const data: any = {};
 				if (json.rate_limit) {
@@ -423,7 +423,7 @@ export class CodexStatusManager {
 						};
 					}
 				}
-				
+
 				if (json.credits) {
 					data.credits = {
 						has_credits: json.credits.has_credits,
@@ -431,7 +431,7 @@ export class CodexStatusManager {
 						balance: json.credits.balance,
 					};
 				}
-				
+
 				await this.updateFromSnapshot(account, data);
 			}
 		} catch (err) {

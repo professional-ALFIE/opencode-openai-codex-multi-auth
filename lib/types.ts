@@ -294,6 +294,30 @@ export interface RequestBody {
 }
 
 /**
+ * Official OpenAI /wham/usage response structure
+ */
+export interface CodexWhamUsageResponse {
+	plan_type?: string;
+	rate_limit?: {
+		primary_window?: {
+			used_percent: number;
+			limit_window_seconds: number;
+			reset_at: number;
+		};
+		secondary_window?: {
+			used_percent: number;
+			limit_window_seconds: number;
+			reset_at: number;
+		};
+	};
+	credits?: {
+		has_credits: boolean;
+		unlimited: boolean;
+		balance: string;
+	};
+}
+
+/**
  * SSE event data structure
  */
 export interface SSEEventData {
