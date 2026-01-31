@@ -288,7 +288,7 @@ export class CodexStatusManager {
 
 			// Ensure file exists for lock
 			if (!existsSync(path)) {
-				await fs.writeFile(path, "[]", "utf-8");
+				await fs.writeFile(path, "[]", { encoding: "utf-8", mode: 0o600 });
 			}
 
 			let release: (() => Promise<void>) | null = null;
@@ -325,8 +325,7 @@ export class CodexStatusManager {
 
 				const data = JSON.stringify(Array.from(this.snapshots.entries()), null, 2);
 				const tmpPath = `${path}.${randomBytes(6).toString("hex")}.tmp`;
-				await fs.writeFile(tmpPath, data, "utf-8");
-				await fs.chmod(tmpPath, 0o600);
+				await fs.writeFile(tmpPath, data, { encoding: "utf-8", mode: 0o600 });
 				await fs.rename(tmpPath, path);
 			} finally {
 				if (release) {
