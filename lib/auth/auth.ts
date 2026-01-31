@@ -1,6 +1,6 @@
 import { generatePKCE } from "@openauthjs/openauth/pkce";
 import { randomBytes } from "node:crypto";
-import type { PKCEPair, AuthorizationFlow, TokenResult, ParsedAuthInput, JWTPayload } from "../types.js";
+import type { PKCEPair, AuthorizationFlow, ParsedAuthInput, JWTPayload, TokenResult } from "../types.js";
 
 // OAuth constants (from openai/codex)
 export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -73,6 +73,25 @@ export function parseAuthorizationInputForFlow(
 }
 
 /**
+ * Decode a JWT token to extract payload
+ * @param token - JWT token to decode
+ * @returns Decoded payload or null if invalid
+ */
+export function decodeJWT(token: string): JWTPayload | null {
+	try {
+		const parts = token.split(".");
+		if (parts.length !== 3) return null;
+		const payload = parts[1];
+		if (!/^[A-Za-z0-9_-]+={0,2}$/.test(payload)) return null;
+		const decoded = Buffer.from(payload, "base64url").toString("utf-8");
+		return JSON.parse(decoded) as JWTPayload;
+	} catch {
+		return null;
+	}
+}
+
+
+/**
  * Exchange authorization code for access and refresh tokens
  * @param code - Authorization code from OAuth flow
  * @param verifier - PKCE verifier
@@ -120,25 +139,8 @@ export async function exchangeAuthorizationCode(
 		refresh: json.refresh_token,
 		expires: Date.now() + json.expires_in * 1000,
 		idToken: typeof json.id_token === "string" && json.id_token.trim() ? json.id_token : undefined,
+		headers: res.headers,
 	};
-}
-
-/**
- * Decode a JWT token to extract payload
- * @param token - JWT token to decode
- * @returns Decoded payload or null if invalid
- */
-export function decodeJWT(token: string): JWTPayload | null {
-	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) return null;
-		const payload = parts[1];
-		if (!/^[A-Za-z0-9_-]+={0,2}$/.test(payload)) return null;
-		const decoded = Buffer.from(payload, "base64url").toString("utf-8");
-		return JSON.parse(decoded) as JWTPayload;
-	} catch {
-		return null;
-	}
 }
 
 /**
@@ -192,6 +194,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 			refresh: json.refresh_token,
 			expires: Date.now() + json.expires_in * 1000,
 			idToken: typeof json.id_token === "string" && json.id_token.trim() ? json.id_token : undefined,
+			headers: response.headers,
 		};
 	} catch (error) {
 		const err = error as Error;

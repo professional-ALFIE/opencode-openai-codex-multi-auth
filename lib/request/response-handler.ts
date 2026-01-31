@@ -1,22 +1,30 @@
 import { logRequest, LOGGING_ENABLED } from "../logger.js";
 import type { SSEEventData } from "../types.js";
+import { codexStatus } from "../codex-status.js";
 
 /**
- * Parse SSE stream to extract final response
+ * Parse SSE stream to extract final response and rate limits
  * @param sseText - Complete SSE stream text
+ * @param account - Account record to update snapshots for
  * @returns Final response object or null if not found
  */
-function parseSseStream(sseText: string): unknown | null {
+async function parseSseStream(sseText: string, account?: any): Promise<unknown | null> {
 	const lines = sseText.split('\n');
+	let finalResponse = null;
 
 	for (const line of lines) {
 		if (line.startsWith('data: ')) {
 			try {
 				const data = JSON.parse(line.substring(6)) as SSEEventData;
 
+				// Handle token_count event with rate limits
+				if (data.type === 'token_count' && (data as any).rate_limits && account) {
+					await codexStatus.updateFromSnapshot(account, (data as any).rate_limits);
+				}
+
 				// Look for response.done event with final data
 				if (data.type === 'response.done' || data.type === 'response.completed') {
-					return data.response;
+					finalResponse = data.response;
 				}
 			} catch (e) {
 				// Skip malformed JSON
@@ -24,16 +32,17 @@ function parseSseStream(sseText: string): unknown | null {
 		}
 	}
 
-	return null;
+	return finalResponse;
 }
 
 /**
  * Convert SSE stream response to JSON for generateText()
  * @param response - Fetch response with SSE stream
  * @param headers - Response headers
+ * @param account - Account record
  * @returns Response with JSON body
  */
-export async function convertSseToJson(response: Response, headers: Headers): Promise<Response> {
+export async function convertSseToJson(response: Response, headers: Headers, account?: any): Promise<Response> {
 	if (!response.body) {
 		throw new Error('[openai-codex-plugin] Response has no body');
 	}
@@ -53,8 +62,8 @@ export async function convertSseToJson(response: Response, headers: Headers): Pr
 			logRequest("stream-full", { fullContent: fullText });
 		}
 
-		// Parse SSE events to extract the final response
-		const finalResponse = parseSseStream(fullText);
+		// Parse SSE events to extract the final response and limits
+		const finalResponse = await parseSseStream(fullText, account);
 
 		if (!finalResponse) {
 			console.error('[openai-codex-plugin] Could not find final response in SSE stream');

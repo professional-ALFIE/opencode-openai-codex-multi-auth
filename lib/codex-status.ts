@@ -23,7 +23,7 @@ export interface CodexRateLimitSnapshot {
 	credits: {
 		hasCredits: boolean;
 		unlimited: boolean;
-		balance: number;
+		balance: string;
 	} | null;
 }
 
@@ -111,15 +111,23 @@ export class CodexStatusManager {
 
 		const primaryUsed = parseNum(getHeader("x-codex-primary-used-percent"));
 		const primaryWindow = parseNum(getHeader("x-codex-primary-window-minutes"));
-		const primaryReset = parseNum(getHeader("x-codex-primary-reset-at"));
+		let primaryReset = parseNum(getHeader("x-codex-primary-reset-at"));
+		// Handle unix seconds (Codex API style)
+		if (primaryReset !== null && primaryReset < 2000000000) {
+			primaryReset *= 1000;
+		}
 
 		const secondaryUsed = parseNum(getHeader("x-codex-secondary-used-percent"));
 		const secondaryWindow = parseNum(getHeader("x-codex-secondary-window-minutes"));
-		const secondaryReset = parseNum(getHeader("x-codex-secondary-reset-at"));
+		let secondaryReset = parseNum(getHeader("x-codex-secondary-reset-at"));
+		// Handle unix seconds (Codex API style)
+		if (secondaryReset !== null && secondaryReset < 2000000000) {
+			secondaryReset *= 1000;
+		}
 
 		const hasCredits = parseBool(getHeader("x-codex-credits-has-credits"));
 		const unlimited = parseBool(getHeader("x-codex-credits-unlimited"));
-		const balance = parseNum(getHeader("x-codex-credits-balance"));
+		const balance = getHeader("x-codex-credits-balance");
 
 		const key = this.getSnapshotKey(account);
 		const existing = this.snapshots.get(key);
@@ -146,11 +154,11 @@ export class CodexStatusManager {
 						}
 					: (existing?.secondary || null),
 			credits:
-				hasCredits !== null || unlimited !== null || balance !== null
+				hasCredits !== null || unlimited !== null || balance !== undefined
 					? {
 							hasCredits: hasCredits ?? (existing?.credits?.hasCredits || false),
 							unlimited: unlimited ?? (existing?.credits?.unlimited || false),
-							balance: balance ?? (existing?.credits?.balance || 0),
+							balance: balance ?? (existing?.credits?.balance || "0"),
 						}
 					: (existing?.credits || null),
 		};
@@ -228,9 +236,10 @@ export class CodexStatusManager {
 
 		if (snapshot.credits) {
 			const { unlimited, balance } = snapshot.credits;
-			const creditStr = unlimited ? "unlimited" : `${balance.toFixed(2)} credits`;
-			lines.push(`  Credits  ${creditStr}${staleLabel}`);
+			const creditStr = unlimited ? "unlimited" : `${balance} credits`;
+			lines.push(`  Credits  ${creditStr}${staleLabel}`.padEnd(52));
 		}
+
 
 		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
 			const updateTime = new Date(snapshot.updatedAt);
@@ -318,6 +327,52 @@ export class CodexStatusManager {
 				console.error("[CodexStatus] Failed to save snapshots:", error);
 			}
 		}
+	}
+	/**
+	 * Update from an explicit RateLimitSnapshot object (Codex API style)
+	 */
+	async updateFromSnapshot(account: AccountRecordV3, snapshot: any): Promise<void> {
+		if (!snapshot) return;
+		await this.ensureInitialized();
+
+		const key = this.getSnapshotKey(account);
+		const existing = this.snapshots.get(key);
+
+		const toMs = (s: number | null | undefined) => {
+			if (s === null || s === undefined) return null;
+			return s < 2000000000 ? s * 1000 : s;
+		};
+
+		const updated: CodexRateLimitSnapshot = {
+			accountId: account.accountId || "",
+			email: account.email || "",
+			plan: account.plan || "",
+			updatedAt: Date.now(),
+			primary: snapshot.primary
+				? {
+						usedPercent: snapshot.primary.used_percent,
+						windowMinutes: snapshot.primary.window_minutes || (existing?.primary?.windowMinutes || 0),
+						resetAt: toMs(snapshot.primary.resets_at) || (existing?.primary?.resetAt || 0),
+					}
+				: (existing?.primary || null),
+			secondary: snapshot.secondary
+				? {
+						usedPercent: snapshot.secondary.used_percent,
+						windowMinutes: snapshot.secondary.window_minutes || (existing?.secondary?.windowMinutes || 0),
+						resetAt: toMs(snapshot.secondary.resets_at) || (existing?.secondary?.resetAt || 0),
+					}
+				: (existing?.secondary || null),
+			credits: snapshot.credits
+				? {
+						hasCredits: snapshot.credits.has_credits,
+						unlimited: snapshot.credits.unlimited,
+						balance: snapshot.credits.balance || (existing?.credits?.balance || "0"),
+					}
+				: (existing?.credits || null),
+		};
+
+		this.snapshots.set(key, updated);
+		await this.saveToDisk();
 	}
 }
 

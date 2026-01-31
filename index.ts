@@ -374,15 +374,21 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										const live = accountManager.getAccountByIndex(account.index);
 										if (!live || live.enabled === false) return { type: "failed" } as TokenResult;
 										const refreshed = await accountManager.refreshAccountWithFallback(live);
-										if (refreshed.type !== "success") return refreshed;
-										const refreshedAuth = {
-											type: "oauth" as const,
-											access: refreshed.access,
-											refresh: refreshed.refresh,
-											expires: refreshed.expires,
-										};
-										accountManager.updateFromAuth(live, refreshedAuth);
-										await accountManager.saveToDisk();
+										if (refreshed.type === "success") {
+											if (refreshed.headers) {
+												codexStatus
+													.updateFromHeaders(live, Object.fromEntries(refreshed.headers.entries()))
+													.catch(() => {});
+											}
+											const refreshedAuth = {
+												type: "oauth" as const,
+												access: refreshed.access,
+												refresh: refreshed.refresh,
+												expires: refreshed.expires,
+											};
+											accountManager.updateFromAuth(live, refreshedAuth);
+											await accountManager.saveToDisk();
+										}
 										return refreshed;
 									},
 								});
@@ -531,19 +537,25 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								const tokenExpired = !accountAuth.access || accountAuth.expires <= Date.now();
 								const runRefresh = async (): Promise<TokenResult> => {
 									const refreshed = await accountManager.refreshAccountWithFallback(account);
-									if (refreshed.type !== "success") return refreshed;
-									const refreshedAuth = {
-										type: "oauth" as const,
-										access: refreshed.access,
-										refresh: refreshed.refresh,
-										expires: refreshed.expires,
-									};
-									accountManager.updateFromAuth(account, refreshedAuth);
-									await accountManager.saveToDisk();
-									await client.auth.set({
-										path: { id: PROVIDER_ID },
-										body: refreshedAuth,
-									});
+									if (refreshed.type === "success") {
+										if (refreshed.headers) {
+											codexStatus
+												.updateFromHeaders(account, Object.fromEntries(refreshed.headers.entries()))
+												.catch(() => {});
+										}
+										const refreshedAuth = {
+											type: "oauth" as const,
+											access: refreshed.access,
+											refresh: refreshed.refresh,
+											expires: refreshed.expires,
+										};
+										accountManager.updateFromAuth(account, refreshedAuth);
+										await accountManager.saveToDisk();
+										await client.auth.set({
+											path: { id: PROVIDER_ID },
+											body: refreshedAuth,
+										});
+									}
 									return refreshed;
 								};
 
@@ -622,7 +634,61 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									let res: Response;
 									try {
 										res = await fetch(url, { ...requestInit, headers });
-										// Update Codex rate limit snapshot from response headers
+										
+										// Wrap the stream to intercept token_count events for real-time status updates
+										if (res.body) {
+											const accountRef = account;
+											const originalBody = res.body;
+											const reader = originalBody.getReader();
+											const decoder = new TextDecoder();
+											const encoder = new TextEncoder();
+											let sseBuffer = "";
+
+											const transformStream = new ReadableStream({
+												async pull(controller) {
+													const { done, value } = await reader.read();
+													if (done) {
+														controller.close();
+														return;
+													}
+													
+													const chunk = decoder.decode(value, { stream: true });
+													sseBuffer += chunk;
+													
+													// Look for token_count events in the buffer
+													const lines = sseBuffer.split("\n");
+													// Keep the last incomplete line in the buffer
+													sseBuffer = lines.pop() || "";
+													
+													for (const line of lines) {
+														if (line.startsWith("data: ")) {
+															try {
+																const data = JSON.parse(line.substring(6));
+																if (data.type === "token_count" && data.rate_limits) {
+																	// Update status snapshot in the background
+																	codexStatus.updateFromSnapshot(accountRef, data.rate_limits).catch(() => {});
+																}
+															} catch {
+																// Skip malformed JSON
+															}
+														}
+													}
+													
+													controller.enqueue(value);
+												},
+												cancel() {
+													reader.cancel();
+												}
+											});
+											
+											res = new Response(transformStream, {
+												status: res.status,
+												statusText: res.statusText,
+												headers: res.headers,
+											});
+										}
+
+										// Update Codex rate limit snapshot from response headers (legacy fallback)
 										const codexHeaders: Record<string, string> = {};
 										try {
 											res.headers.forEach((val, key) => {

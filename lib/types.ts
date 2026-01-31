@@ -223,6 +223,7 @@ export interface TokenSuccess {
 	refresh: string;
 	expires: number;
 	idToken?: string;
+	headers?: Headers;
 }
 
 /**

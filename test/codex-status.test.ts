@@ -43,7 +43,7 @@ describe("CodexStatusManager", () => {
 		expect(snapshot).not.toBeNull();
 		expect(snapshot?.primary?.usedPercent).toBe(45.5);
 		expect(snapshot?.primary?.windowMinutes).toBe(300);
-		expect(snapshot?.credits?.balance).toBe(15.5);
+		expect(snapshot?.credits?.balance).toBe("15.5");
 		expect(snapshot?.credits?.unlimited).toBe(false);
 	});
 
