@@ -1215,133 +1215,131 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			],
 		},
 		tool: {
-		"openai-accounts": tool({
-			description: "List all configured OpenAI OAuth accounts.",
-			args: {},
-			async execute() {
-				configureStorageForCurrentCwd();
-				const accountManager = await AccountManager.loadFromDisk();
-				// Ensure accounts are hydrated (refreshes tokens if identity is missing)
-				await accountManager.hydrateMissingEmails();
-				await accountManager.saveToDisk();
-				
-				const accounts = accountManager.getAccountsSnapshot();
-				const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2"); // Fallback family for active index
-				const { scope, storagePath } = getStorageScope();
-				const scopeLabel = scope === "project" ? "project" : "global";
+			"openai-accounts": tool({
+				description: "List all configured OpenAI OAuth accounts.",
+				args: {},
+				async execute() {
+					configureStorageForCurrentCwd();
+					const accountManager = await AccountManager.loadFromDisk();
+					// Ensure accounts are hydrated (refreshes tokens if identity is missing)
+					await accountManager.hydrateMissingEmails();
+					await accountManager.saveToDisk();
 
-				if (accounts.length === 0) {
-					return [
+					const accounts = accountManager.getAccountsSnapshot();
+					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
+					const { scope, storagePath } = getStorageScope();
+					const scopeLabel = scope === "project" ? "project" : "global";
+
+					if (accounts.length === 0) {
+						return [
+							`OpenAI Codex Status`,
+							``,
+							`  Scope: ${scopeLabel}`,
+							`  Accounts: 0`,
+							``,
+							`Add accounts:`,
+							`  opencode auth login`,
+							``,
+							`Storage: ${storagePath}`,
+						].join("\n");
+					}
+
+					const now = Date.now();
+					const enabledCount = accounts.filter((a) => a.enabled !== false).length;
+					const rateLimitedCount = accounts.filter(
+						(a) =>
+							a.rateLimitResetTimes &&
+							Object.values(a.rateLimitResetTimes).some(
+								(t) => typeof t === "number" && t > now,
+							),
+					).length;
+
+					const lines: string[] = [
 						`OpenAI Codex Status`,
 						``,
 						`  Scope: ${scopeLabel}`,
-						`  Accounts: 0`,
+						`  Accounts: ${enabledCount}/${accounts.length} enabled`,
+						...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
 						``,
-						`Add accounts:`,
-						`  opencode auth login`,
-						``,
-						`Storage: ${storagePath}`,
-					].join("\n");
-				}
-
-				const now = Date.now();
-				const enabledCount = accounts.filter((a) => a.enabled !== false).length;
-				const rateLimitedCount = accounts.filter(
-					(a) =>
-						a.rateLimitResetTimes &&
-						Object.values(a.rateLimitResetTimes).some(
-							(t) => typeof t === "number" && t > now,
-						),
-				).length;
-
-				const lines: string[] = [
-					`OpenAI Codex Status`,
-					``,
-					`  Scope: ${scopeLabel}`,
-					`  Accounts: ${enabledCount}/${accounts.length} enabled`,
-					...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
-					``,
-					` #   Account                                   Plan       Status`,
-					`---  ----------------------------------------- ---------- ---------------------`,
-				];
-				for (let index = 0; index < accounts.length; index++) {
-					const account = accounts[index];
-					if (!account) continue;
-					const email = account.email || "unknown";
-					const plan = account.plan || "Free";
-					const statuses: string[] = [];
-					if (index === activeIndex) statuses.push("active");
-					if (account.enabled === false) statuses.push("disabled");
-					const rateLimited =
-						account.rateLimitResetTimes &&
-						Object.values(account.rateLimitResetTimes).some(
-							(t) => typeof t === "number" && t > now,
+						` #   Account                                   Plan       Status`,
+						`---  ----------------------------------------- ---------- ---------------------`,
+					];
+					for (let index = 0; index < accounts.length; index++) {
+						const account = accounts[index];
+						if (!account) continue;
+						const email = account.email || "unknown";
+						const plan = account.plan || "Free";
+						const statuses: string[] = [];
+						if (index === activeIndex) statuses.push("active");
+						if (account.enabled === false) statuses.push("disabled");
+						const rateLimited =
+							account.rateLimitResetTimes &&
+							Object.values(account.rateLimitResetTimes).some(
+								(t) => typeof t === "number" && t > now,
+							);
+						if (rateLimited) statuses.push("rate-limited");
+						if (typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now) {
+							statuses.push("cooldown");
+						}
+						lines.push(
+							`${String(index + 1).padStart(2)}   ${email.padEnd(41)} ${plan.padEnd(10)} ${
+								statuses.length > 0 ? statuses.join(", ") : "ok"
+							}`,
 						);
-					if (rateLimited) statuses.push("rate-limited");
-					if (
-						typeof account.coolingDownUntil === "number" &&
-						account.coolingDownUntil > now
-					) {
-						statuses.push("cooldown");
+
+						// Add Codex status details
+						const codexLines = await codexStatus.renderStatus(account);
+						lines.push(...codexLines.map((l) => "     " + l.trim()));
+						lines.push(""); // Spacer between accounts
 					}
-					lines.push(
-						`${String(index + 1).padStart(2)}   ${email.padEnd(41)} ${plan.padEnd(10)} ${
-							statuses.length > 0 ? statuses.join(", ") : "ok"
-						}`,
-					);
+					lines.push(`Storage: ${storagePath}`);
+					return lines.join("\n");
+				},
+			}),
+			"status-codex": tool({
+				description: "Show a compact inline status of all OpenAI Codex accounts.",
+				args: {},
+				async execute() {
+					configureStorageForCurrentCwd();
+					const accountManager = await AccountManager.loadFromDisk();
+					await accountManager.hydrateMissingEmails();
+					await accountManager.saveToDisk();
 
-					// Add Codex status details
-					const codexLines = await codexStatus.renderStatus(account);
-					lines.push(...codexLines.map(l => "     " + l.trim()));
-					lines.push(""); // Spacer between accounts
-				}
-				lines.push(`Storage: ${storagePath}`);
-				return lines.join("\n");
-			},
-		}),
-		"status-codex": tool({
-			description: "Show a compact inline status of all OpenAI Codex accounts.",
-			args: {},
-			async execute() {
-				configureStorageForCurrentCwd();
-				const accountManager = await AccountManager.loadFromDisk();
-				await accountManager.hydrateMissingEmails();
-				await accountManager.saveToDisk();
+					const accounts = accountManager.getAccountsSnapshot();
+					if (accounts.length === 0) {
+						return "No OpenAI accounts configured. Run `opencode auth login`.";
+					}
+					const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
+					const now = Date.now();
+					const lines: string[] = ["OpenAI Codex Accounts Status:"];
+					for (let index = 0; index < accounts.length; index++) {
+						const account = accounts[index];
+						if (!account) continue;
+						const email = account.email || "unknown";
+						const plan = account.plan || "Free";
+						const rateLimited =
+							account.rateLimitResetTimes &&
+							Object.values(account.rateLimitResetTimes).some(
+								(t) => typeof t === "number" && t > now,
+							);
+						const coolingDown =
+							typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now;
+						const disabled = account.enabled === false;
 
-				const accounts = accountManager.getAccountsSnapshot();
-				if (accounts.length === 0) {
-					return "No OpenAI accounts configured. Run `opencode auth login`.";
-				}
-				const activeIndex = accountManager.getActiveIndexForFamily("gpt-5.2");
-				const now = Date.now();
-				const lines: string[] = ["OpenAI Codex Accounts Status:"];
-				for (let index = 0; index < accounts.length; index++) {
-					const account = accounts[index];
-					if (!account) continue;
-					const email = account.email || "unknown";
-					const plan = account.plan || "Free";
-					const rateLimited =
-						account.rateLimitResetTimes &&
-						Object.values(account.rateLimitResetTimes).some(
-							(t) => typeof t === "number" && t > now,
+						let status = "ok";
+						if (disabled) status = "disabled";
+						else if (rateLimited) status = "rate-limited";
+						else if (coolingDown) status = "cooldown";
+
+						lines.push(
+							`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`,
 						);
-					const coolingDown =
-						typeof account.coolingDownUntil === "number" && account.coolingDownUntil > now;
-					const disabled = account.enabled === false;
-
-					let status = "ok";
-					if (disabled) status = "disabled";
-					else if (rateLimited) status = "rate-limited";
-					else if (coolingDown) status = "cooldown";
-
-					lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`);
-					const codexLines = await codexStatus.renderStatus(account);
-					lines.push(...codexLines.map(l => "  " + l.trim()));
-				}
-				return lines.join("\n");
-			},
-		}),
-
+						const codexLines = await codexStatus.renderStatus(account);
+						lines.push(...codexLines.map((l) => "  " + l.trim()));
+					}
+					return lines.join("\n");
+				},
+			}),
 			"openai-accounts-switch": tool({
 				description: "Switch active OpenAI account by index (1-based).",
 				args: {
@@ -1398,11 +1396,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					const account = updated.accounts[targetIndex];
 					if (cachedAccountManager) {
 						const live = cachedAccountManager.getAccountByIndex(targetIndex);
-						if (live) live.enabled = account?.enabled !== false;
+						if (live) {
+							live.enabled = account?.enabled !== false;
+							await cachedAccountManager.saveToDisk();
+						}
 					}
-					const enabled = account?.enabled !== false;
-					const verb = enabled ? "Enabled" : "Disabled";
-					return `${verb} ${formatAccountLabel(account, targetIndex)} (${targetIndex + 1}/${updated.accounts.length})`;
+					return `${account?.enabled !== false ? "Enabled" : "Disabled"} ${formatAccountLabel(
+						account,
+						targetIndex,
+					)}`;
 				},
 			}),
 		},
