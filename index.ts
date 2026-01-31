@@ -531,6 +531,29 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				{ label: AUTH_LABELS.API_KEY, type: "api" as const },
 			],
 		},
+		config: async (cfg) => {
+			cfg.command = cfg.command || {};
+			cfg.command["codex-status"] = {
+				template: "Run the codex-status tool and show the output.",
+				description: "List all configured OpenAI Codex accounts and their current rate limits.",
+			};
+			cfg.command["codex-switch-accounts"] = {
+				template: "Run the codex-switch-accounts tool with index $ARGUMENTS and show the output.",
+				description: "Switch active OpenAI account by index (1-based).",
+			};
+			cfg.command["codex-toggle-account"] = {
+				template: "Run the codex-toggle-account tool with index $ARGUMENTS and show the output.",
+				description: "Enable or disable an OpenAI account by index (1-based).",
+			};
+
+			cfg.experimental = cfg.experimental || {};
+			cfg.experimental.primary_tools = cfg.experimental.primary_tools || [];
+			for (const t of ["codex-status", "codex-switch-accounts", "codex-toggle-account"]) {
+				if (!cfg.experimental.primary_tools.includes(t)) {
+					cfg.experimental.primary_tools.push(t);
+				}
+			}
+		},
 		tool: {
 			"codex-status": tool({
 				description: "List all configured OpenAI Codex accounts and their current rate limits.",
