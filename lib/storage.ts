@@ -7,6 +7,7 @@ import lockfile from "proper-lockfile";
 
 import type { AccountStorageV3 } from "./types.js";
 import { findAccountMatchIndex } from "./account-matching.js";
+import { getOpencodeConfigDir as getSystemConfigDir } from "./paths.js";
 
 const PLAN_TYPE_LABELS: Record<string, string> = {
 	free: "Free",
@@ -76,6 +77,13 @@ export function configureStorageForCwd(options: {
 
 export function getStorageScope(): { scope: StorageScope; storagePath: string } {
 	return { scope: storageScopeOverride, storagePath: getStoragePath() };
+}
+
+export function getOpencodeConfigDir(): string {
+	if (storageScopeOverride === "project" && storagePathOverride) {
+		return dirname(storagePathOverride);
+	}
+	return getSystemConfigDir();
 }
 
 function debug(...args: unknown[]): void {
@@ -287,14 +295,6 @@ async function cleanupBackupFiles(storagePath: string): Promise<void> {
 	}
 }
 
-function getOpencodeConfigDir(): string {
-	const xdgConfigHome = process.env.XDG_CONFIG_HOME;
-	if (xdgConfigHome && xdgConfigHome.trim()) {
-		return join(xdgConfigHome, "opencode");
-	}
-	return join(homedir(), ".config", "opencode");
-}
-
 function getLegacyOpencodeDir(): string {
 	return join(homedir(), ".opencode");
 }
@@ -305,7 +305,7 @@ export function getStoragePath(): string {
 }
 
 export function getCachePath(filename: string): string {
-	return join(getOpencodeConfigDir(), "cache", filename);
+	return join(getSystemConfigDir(), "cache", filename);
 }
 
 export type AccountsInspection = {

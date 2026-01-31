@@ -1259,13 +1259,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					`  Accounts: ${enabledCount}/${storage.accounts.length} enabled`,
 					...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
 					``,
-					` #  Label                                     Status`,
-					`--- ----------------------------------------- ---------------------`,
+					` #    Account                                   Plan      Status`,
+					`---   ----------------------------------------- --------- ---------------------`,
 				];
 				for (let index = 0; index < storage.accounts.length; index++) {
 					const account = storage.accounts[index];
 					if (!account) continue;
-					const label = formatAccountLabel(account, index);
+					const email = account.email || "unknown";
+					const plan = account.plan || "Free";
 					const statuses: string[] = [];
 					if (index === activeIndex) statuses.push("active");
 					if (account.enabled === false) statuses.push("disabled");
@@ -1282,14 +1283,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						statuses.push("cooldown");
 					}
 					lines.push(
-						`${String(index + 1).padEnd(3)} ${label.padEnd(41)} ${
+						`${String(index + 1).padStart(2)}    ${email.padEnd(41)} ${plan.padEnd(9)} ${
 							statuses.length > 0 ? statuses.join(", ") : "ok"
 						}`,
 					);
 
 					// Add Codex status details
 					const codexLines = await codexStatus.renderStatus(account);
-					lines.push(...codexLines);
+					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
+						lines.push(...codexLines.map(l => "      " + l.trim()));
+					}
 					lines.push(""); // Spacer between accounts
 				}
 				lines.push(`Storage: ${storagePath}`);
@@ -1311,7 +1314,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				for (let index = 0; index < storage.accounts.length; index++) {
 					const account = storage.accounts[index];
 					if (!account) continue;
-					const label = formatAccountLabel(account, index);
+					const email = account.email || "unknown";
+					const plan = account.plan || "Free";
 					const rateLimited =
 						account.rateLimitResetTimes &&
 						Object.values(account.rateLimitResetTimes).some(
@@ -1326,10 +1330,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					else if (rateLimited) status = "rate-limited";
 					else if (coolingDown) status = "cooldown";
 
-					lines.push(`${index === activeIndex ? "*" : "-"} ${label} [${status}]`);
+					lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(7)}) [${status}]`);
 					const codexLines = await codexStatus.renderStatus(account);
 					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
-						lines.push(...codexLines);
+						lines.push(...codexLines.map(l => "  " + l.trim()));
 					}
 				}
 				return lines.join("\n");

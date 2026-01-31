@@ -197,6 +197,9 @@ export class CodexStatusManager {
 
 	private async loadFromDisk(): Promise<void> {
 		const path = getCachePath(SNAPSHOTS_FILE);
+		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			console.log(`[CodexStatus] Loading snapshots from ${path}`);
+		}
 		if (!existsSync(path)) return;
 		try {
 			const data = JSON.parse(await fs.readFile(path, "utf-8"));
