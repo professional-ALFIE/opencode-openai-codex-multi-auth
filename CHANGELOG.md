@@ -11,8 +11,10 @@ All notable changes to this project are documented here. Dates use the ISO forma
 
 ### Changed
 - **Async Status Hardening**: refactored `CodexStatusManager` to use non-blocking async I/O (`fs.promises`) and promise-based initialization gates to prevent concurrency races.
+- **Cross-Process Hydration**: ensured status snapshots are stored globally even when using per-project account storage, allowing all projects to share real-time rate limit visibility.
+- **Tool UI Refinement**: refactored `openai-accounts` and `status-codex` output into a strictly aligned ASCII table format for better readability.
 - **Lost Updates Prevention**: implemented timestamp-based (`updatedAt`) merge arbitration under lock (`proper-lockfile`) to ensure newest state wins across concurrent processes.
-- **Security Hardening**: snapshots cache file now uses restrictive `0600` permissions.
+- **Security Hardening**: primary accounts and snapshots cache files now use restrictive `0600` permissions.
 
 ### Fixed
 - **Initialization Race**: resolved a race condition where concurrent calls to the status manager could result in stale or partial data during the initial disk load.
