@@ -1283,7 +1283,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						statuses.push("cooldown");
 					}
 					lines.push(
-						`${String(index + 1).padStart(2)}    ${email.padEnd(41)} ${plan.padEnd(9)} ${
+						`${String(index + 1).padStart(2)}    ${email.padEnd(41)} ${plan.padEnd(10)} ${
 							statuses.length > 0 ? statuses.join(", ") : "ok"
 						}`,
 					);
@@ -1330,7 +1330,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					else if (rateLimited) status = "rate-limited";
 					else if (coolingDown) status = "cooldown";
 
-					lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(7)}) [${status}]`);
+					lines.push(`${index === activeIndex ? "*" : "-"} ${email.padEnd(41)} (${plan.padEnd(10)}) [${status}]`);
 					const codexLines = await codexStatus.renderStatus(account);
 					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
 						lines.push(...codexLines.map(l => "  " + l.trim()));

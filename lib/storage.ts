@@ -875,11 +875,13 @@ async function writeAccountsFile(storage: AccountStorageV3): Promise<void> {
 	const filePath = getStoragePath();
 	await withFileLock(filePath, async () => {
 		const jsonContent = JSON.stringify(storage, null, 2);
-		const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
-		try {
-			await fs.writeFile(tmpPath, jsonContent, "utf-8");
-			await fs.rename(tmpPath, filePath);
-		} catch (error) {
+			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+			try {
+				await fs.writeFile(tmpPath, jsonContent, "utf-8");
+				await fs.chmod(tmpPath, 0o600);
+				await fs.rename(tmpPath, filePath);
+			} catch (error) {
+
 			try {
 				await fs.unlink(tmpPath);
 			} catch {
