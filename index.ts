@@ -1259,8 +1259,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					`  Accounts: ${enabledCount}/${storage.accounts.length} enabled`,
 					...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
 					``,
-					` #    Account                                   Plan      Status`,
-					`---   ----------------------------------------- --------- ---------------------`,
+					` #   Account                                   Plan       Status`,
+					`---  ----------------------------------------- ---------- ---------------------`,
 				];
 				for (let index = 0; index < storage.accounts.length; index++) {
 					const account = storage.accounts[index];
@@ -1283,7 +1283,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						statuses.push("cooldown");
 					}
 					lines.push(
-						`${String(index + 1).padStart(2)}    ${email.padEnd(41)} ${plan.padEnd(10)} ${
+						`${String(index + 1).padEnd(3)} ${email.padEnd(41)} ${plan.padEnd(10)} ${
 							statuses.length > 0 ? statuses.join(", ") : "ok"
 						}`,
 					);
@@ -1291,7 +1291,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					// Add Codex status details
 					const codexLines = await codexStatus.renderStatus(account);
 					if (codexLines.length > 0 && !codexLines[0]?.includes("No Codex status")) {
-						lines.push(...codexLines.map(l => "      " + l.trim()));
+						lines.push(...codexLines.map(l => "     " + l.trim()));
 					}
 					lines.push(""); // Spacer between accounts
 				}
