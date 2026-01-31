@@ -1,6 +1,6 @@
 import { promises as fs, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import lockfile from "proper-lockfile";
 import { type AccountRecordV3 } from "./types.js";
 import { getCachePath } from "./storage.js";
@@ -74,11 +74,13 @@ export class CodexStatusManager {
 		if (account.accountId && account.email && account.plan) {
 			const plan = normalizePlanType(account.plan);
 			key = `${account.accountId}|${account.email.toLowerCase()}|${plan}`;
+		} else if (account.refreshToken) {
+			// Hash the refresh token to use as a stable, secure key for legacy accounts
+			key = createHash("sha256").update(account.refreshToken).digest("hex");
 		} else {
-			// Use refresh token as stable key for legacy accounts (standard in this codebase)
-			key = account.refreshToken || "unknown";
+			key = "unknown";
 		}
-		
+
 		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
 			console.log(`[CodexStatus] Generated key: ${key}`);
 		}

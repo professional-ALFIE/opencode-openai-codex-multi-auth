@@ -781,6 +781,7 @@ export async function saveAccountsWithLock(
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
 			try {
 				await fs.writeFile(tmpPath, jsonContent, "utf-8");
+				await fs.chmod(tmpPath, 0o600);
 				await fs.rename(tmpPath, filePath);
 			} catch (error) {
 				try {
@@ -1027,6 +1028,7 @@ export async function saveAccounts(
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
 			try {
 				await fs.writeFile(tmpPath, jsonContent, "utf-8");
+				await fs.chmod(tmpPath, 0o600);
 				await fs.rename(tmpPath, filePath);
 			} catch (error) {
 				try {
