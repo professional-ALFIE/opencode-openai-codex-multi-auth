@@ -395,18 +395,12 @@ Multi-account settings live in the same plugin config file:
 
 - `~/.config/opencode/openai-codex-auth-config.json`
 
-Add `$schema` for editor autocompletion:
-
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
-  "codexMode": true,
-  "accountSelectionStrategy": "sticky",
-  "pidOffsetEnabled": true,
-  "quietMode": false,
-  "perProjectAccounts": false
-}
-```
+| Field | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `accountSelectionStrategy` | `string` | `"sticky"` | Strategy for selecting accounts (`sticky`, `round-robin`, `hybrid`). |
+| `pidOffsetEnabled` | `boolean` | `true` | Enable PID-based offset for parallel agent rotation. |
+| `perProjectAccounts` | `boolean` | `false` | If `true`, the plugin will look for and use account storage in `.opencode/openai-codex-accounts.json` relative to the current project. |
+| `quietMode` | `boolean` | `false` | Disable TUI toasts for background operations (e.g., token refreshes). |
 
 #### Per-Project Storage
 

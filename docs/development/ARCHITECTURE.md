@@ -10,6 +10,8 @@ This document explains the technical design decisions, architecture, and impleme
 - [Request Pipeline](#request-pipeline)
 - [Comparison with Codex CLI](#comparison-with-codex-cli)
 - [Design Rationale](#design-rationale)
+- [Multi-Process State Management](#multi-process-state-management)
+- [Codex Status Tool Implementation](#codex-status-tool-implementation)
 
 ---
 
@@ -425,6 +427,42 @@ let include: Vec<String> = if reasoning.is_some() {
 **Cause**: Azure doesn't support stateless mode
 **Workaround**: Codex CLI uses `store: true` for Azure only
 **This Plugin**: Only supports ChatGPT OAuth (no Azure)
+
+---
+
+## Multi-Process State Management
+
+The plugin is designed to operate safely across multiple concurrent processes (e.g., the OpenCode proxy and CLI tools).
+
+### Account Synchronization
+- **Dirty Tracking**: The plugin tracks the `originalRefreshToken` to detect if the disk state has changed since the account was loaded.
+- **Lazy Fallback**: If a token refresh fails, the plugin re-loads the account from disk to ensure it's not using a stale refresh token that was already rotated by another process.
+- **Lock-Merge-Write**: All account updates use `proper-lockfile` to ensure atomic reads and writes.
+
+### Codex Status Snapshots
+- **Disk Persistence**: Snapshots are stored in `~/.config/opencode/cache/codex-snapshots.json`.
+- **Concurrency Strategy**: 
+  - **Async Locking**: Uses `proper-lockfile` to coordinate access between the proxy and CLI tools.
+  - **Merge-on-Save**: When saving, the plugin re-loads snapshots from disk and merges them with in-memory state, using a timestamp-based (`updatedAt`) check to ensure the newest data always wins.
+  - **Initialization Gate**: Uses a promise-based gate (`initPromise`) to ensure concurrent calls wait for the initial disk load, preventing data loss.
+
+---
+
+## Codex Status Tool Implementation
+
+The `status-codex` and `openai-accounts` tools provide real-time visibility into OpenAI's backend rate limits.
+
+### Data Capture
+The plugin intercepts `x-codex-*` headers from the OpenAI response stream:
+- `x-codex-primary-used-percent`: Usage for the current window.
+- `x-codex-primary-window-minutes`: Duration of the window (e.g., 180 for 3h).
+- `x-codex-primary-reset-at`: Epoch timestamp for the next reset.
+- `x-codex-credits-*`: Team/Enterprise credit balance and unlimited status.
+
+### Rendering
+- **Dynamic Labels**: Labels (e.g., `3h`, `7d`) are derived from the `windowMinutes` header.
+- **ASCII Bars**: Usage is rendered as a 20-character ASCII progress bar (`████░░░░`).
+- **Staleness Tracking**: Data older than 15 minutes is marked as `(stale)` to avoid misleading the user with outdated limits.
 
 ---
 
