@@ -142,6 +142,75 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("saveToDisk persists refreshed token over stale disk value", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			seedStorageFromBackup(root);
+			const fixture = loadFixture("openai-codex-accounts.json");
+			const accountOne = fixture.accounts[0]!;
+			const initialStorage: AccountStorageV3 = {
+				...fixture,
+				accounts: [accountOne],
+			};
+			writeFileSync(
+				getStoragePath(),
+				JSON.stringify(initialStorage, null, 2),
+				"utf-8",
+			);
+
+			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
+			const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+			if (!account) throw new Error("Expected account");
+			const updatedToken = `${account.refreshToken}-new`;
+
+			manager.updateFromAuth(account, createAuth(updatedToken));
+			await manager.saveToDisk();
+
+			const finalStorage = await loadAccounts();
+			const stored = finalStorage?.accounts.find(
+				(entry) => entry.accountId === accountOne.accountId,
+			);
+			expect(stored?.refreshToken).toBe(updatedToken);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("saveToDisk does not duplicate legacy accounts missing identity", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			const legacy = {
+				...fixture.accounts[0]!,
+				accountId: undefined,
+				email: undefined,
+				plan: undefined,
+			};
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: [legacy],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			mkdirSync(join(root, "opencode"), { recursive: true });
+			writeFileSync(getStoragePath(), JSON.stringify(storage, null, 2), "utf-8");
+
+			const manager = new AccountManager(undefined, storage);
+			await manager.saveToDisk();
+
+			const finalStorage = JSON.parse(
+				readFileSync(getStoragePath(), "utf-8"),
+			) as AccountStorageV3;
+			const matches = finalStorage.accounts.filter(
+				(entry) => entry.refreshToken === legacy.refreshToken,
+			);
+			expect(matches).toHaveLength(1);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("updates lastUsed only when marked used", () => {
 		const manager = new AccountManager(
 			createAuth(fixtureAccounts[0]!.refreshToken),
@@ -315,6 +384,68 @@ describe("AccountManager", () => {
 			expect(backups).toHaveLength(1);
 		} finally {
 			vi.useRealTimers();
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("skips migration refresh for disabled legacy accounts", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			mkdirSync(join(root, "opencode"), { recursive: true });
+			const legacy = {
+				...fixture.accounts[0]!,
+				accountId: undefined,
+				email: undefined,
+				plan: undefined,
+				enabled: false,
+			};
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: [legacy],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			writeFileSync(getStoragePath(), JSON.stringify(storage, null, 2), "utf-8");
+
+			const refreshSpy = vi
+				.spyOn(authModule, "refreshAccessToken")
+				.mockResolvedValue({ type: "failed" } as const);
+			await AccountManager.loadFromDisk();
+			expect(refreshSpy).not.toHaveBeenCalled();
+			refreshSpy.mockRestore();
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("saveToDisk remaps active indices to merged accounts", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			mkdirSync(join(root, "opencode"), { recursive: true });
+			const existing: AccountStorageV3 = {
+				version: 3,
+				accounts: [fixture.accounts[0]!, fixture.accounts[1]!],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			writeFileSync(getStoragePath(), JSON.stringify(existing, null, 2), "utf-8");
+
+			const reversed: AccountStorageV3 = {
+				version: 3,
+				accounts: [fixture.accounts[1]!, fixture.accounts[0]!],
+				activeIndex: 0,
+				activeIndexByFamily: { codex: 0 },
+			};
+			const manager = new AccountManager(undefined, reversed);
+			manager.setActiveIndex(0);
+			await manager.saveToDisk();
+
+			const finalStorage = JSON.parse(readFileSync(getStoragePath(), "utf-8")) as AccountStorageV3;
+			expect(finalStorage.activeIndex).toBe(1);
+			expect(finalStorage.activeIndexByFamily?.codex).toBe(1);
+		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});

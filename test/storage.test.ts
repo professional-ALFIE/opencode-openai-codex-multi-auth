@@ -18,6 +18,7 @@ import {
 	getStoragePath,
 	inspectAccountsFile,
 	loadAccounts,
+	backupAccountsFile,
 	autoQuarantineCorruptAccountsFile,
 	writeQuarantineFile,
 	quarantineAccounts,
@@ -235,6 +236,83 @@ describe("storage", () => {
 		);
 	});
 
+	it("saveAccounts preserves refresh tokens when requested", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+
+		const newerToken = `${accountOne.refreshToken}-new`;
+		const existing: AccountStorageV3 = {
+			version: 3,
+			accounts: [{ ...accountOne, refreshToken: newerToken }],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		writeFileSync(storagePath, JSON.stringify(existing, null, 2), "utf-8");
+
+		const incoming: AccountStorageV3 = {
+			version: 3,
+			accounts: [{ ...accountOne }],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		await saveAccounts(incoming, { preserveRefreshTokens: true });
+
+		const loaded = await loadAccounts();
+		expect(loaded?.accounts[0]?.refreshToken).toBe(newerToken);
+	});
+
+	it("saveAccounts replaces storage when requested", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
+
+		const replacement: AccountStorageV3 = {
+			version: 3,
+			accounts: [],
+			activeIndex: 0,
+			activeIndexByFamily: {},
+		};
+		await saveAccounts(replacement, { replace: true });
+
+		const loaded = JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+		expect(loaded.accounts).toHaveLength(0);
+	});
+
+	it("backupAccountsFile sets private mode and prunes old backups", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+		seedStorageFromBackup(storagePath);
+
+		for (let i = 0; i < 30; i++) {
+			writeFileSync(`${storagePath}.bak-${1000 + i}`, "{}", "utf-8");
+		}
+		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(10_000);
+		let backupPath: string | null = null;
+		try {
+			backupPath = await backupAccountsFile();
+		} finally {
+			nowSpy.mockRestore();
+		}
+		expect(backupPath).toBeTruthy();
+		if (!backupPath) return;
+		if (process.platform !== "win32") {
+			const stat = await fsPromises.stat(backupPath);
+			expect(stat.mode & 0o777).toBe(0o600);
+		}
+
+		const backupFiles = readdirSync(join(root, "opencode")).filter((name) =>
+			name.startsWith("openai-codex-accounts.json.bak-"),
+		);
+		expect(backupFiles.length).toBeLessThanOrEqual(20);
+		expect(backupFiles.some((name) => name.includes("bak-10000"))).toBe(true);
+	});
+
 	it("saveAccounts preserves disabled flag when incoming omits enabled", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
 		process.env.XDG_CONFIG_HOME = root;
@@ -266,6 +344,109 @@ describe("storage", () => {
 
 		const loaded = await loadAccounts();
 		expect(loaded?.accounts[0]?.enabled).toBe(false);
+	});
+
+	it("saveAccounts merges legacy records without duplication", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+
+		const legacy = {
+			...accountOne,
+			accountId: undefined,
+			email: undefined,
+			plan: undefined,
+		};
+		const existing: AccountStorageV3 = {
+			version: 3,
+			accounts: [legacy],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		writeFileSync(storagePath, JSON.stringify(existing, null, 2), "utf-8");
+
+		const incoming: AccountStorageV3 = {
+			version: 3,
+			accounts: [legacy],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		await saveAccounts(incoming);
+
+		const finalStorage = JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+		const matches = finalStorage.accounts.filter(
+			(entry) => entry.refreshToken === legacy.refreshToken,
+		);
+		expect(matches).toHaveLength(1);
+	});
+
+	it("saveAccounts merges legacy updates by refresh token", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+
+		const legacy = {
+			...accountOne,
+			accountId: undefined,
+			email: undefined,
+			plan: undefined,
+			lastUsed: accountOne.lastUsed + 1000,
+		};
+		const existing: AccountStorageV3 = {
+			version: 3,
+			accounts: [legacy],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		writeFileSync(storagePath, JSON.stringify(existing, null, 2), "utf-8");
+
+		const incoming: AccountStorageV3 = {
+			version: 3,
+			accounts: [
+				{
+					...legacy,
+					email: "legacy@example.com",
+					lastUsed: legacy.lastUsed - 500,
+				},
+			],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		await saveAccounts(incoming);
+
+		const finalStorage = JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+		const merged = finalStorage.accounts.find(
+			(entry) => entry.refreshToken === legacy.refreshToken,
+		);
+		expect(merged?.email).toBe("legacy@example.com");
+	});
+
+	it("saveAccounts remaps activeIndexByFamily to merged accounts", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-storage-"));
+		process.env.XDG_CONFIG_HOME = root;
+		mkdirSync(join(root, "opencode"), { recursive: true });
+		const storagePath = getStoragePath();
+
+		const existing: AccountStorageV3 = {
+			version: 3,
+			accounts: [accountOne, accountTwo],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		writeFileSync(storagePath, JSON.stringify(existing, null, 2), "utf-8");
+
+		const incoming: AccountStorageV3 = {
+			version: 3,
+			accounts: [accountTwo, accountOne],
+			activeIndex: 0,
+			activeIndexByFamily: { codex: 0 },
+		};
+		await saveAccounts(incoming);
+
+		const finalStorage = JSON.parse(readFileSync(storagePath, "utf-8")) as AccountStorageV3;
+		expect(finalStorage.activeIndexByFamily?.codex).toBe(1);
 	});
 
 	it("saveAccounts maps activeIndex to merged account", async () => {

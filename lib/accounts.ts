@@ -10,7 +10,7 @@ import type {
 	RateLimitStateV3,
 	TokenResult,
 } from "./types.js";
-import { backupAccountsFile, loadAccounts, saveAccounts } from "./storage.js";
+import { backupAccountsFile, loadAccounts, saveAccounts, saveAccountsWithLock } from "./storage.js";
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
 import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
@@ -189,6 +189,10 @@ async function migrateLegacyAccounts(storage: AccountStorageV3): Promise<Account
 	const migratedAccounts: AccountStorageV3["accounts"] = [];
 
 	for (const record of storage.accounts) {
+		if (record.enabled === false) {
+			migratedAccounts.push(record);
+			continue;
+		}
 		if (hasCompleteIdentity(record)) {
 			migratedAccounts.push(record);
 			continue;
@@ -245,11 +249,16 @@ function mergeAccountRecords(
 	}));
 
 	for (const candidate of incoming) {
-		const matchIndex = findAccountMatchIndex(merged, {
+		let matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
 			email: candidate.email,
 		});
+		if (matchIndex < 0 && (!candidate.accountId || !candidate.email || !candidate.plan)) {
+			matchIndex = merged.findIndex(
+				(account) => account.refreshToken === candidate.refreshToken,
+			);
+		}
 		if (matchIndex < 0) {
 			merged.push({
 				refreshToken: candidate.refreshToken,
@@ -714,7 +723,8 @@ export class AccountManager {
 
 	updateFromAuth(account: ManagedAccount, auth: OAuthAuthDetails): void {
 		account.refreshToken = auth.refresh;
-		account.originalRefreshToken = auth.refresh;
+		// Do NOT update originalRefreshToken here. We want it to reflect the "last saved" state
+		// so that mergeAccountRecords can detect that we have a pending change.
 		account.access = auth.access;
 		account.expires = auth.expires;
 		account.accountId = extractAccountId(auth.access) ?? account.accountId;
@@ -756,7 +766,7 @@ export class AccountManager {
 				account.plan =
 					extractAccountPlan(idToken) ?? extractAccountPlan(accessToken) ?? account.plan;
 				account.refreshToken = refreshed.refresh;
-				account.originalRefreshToken = refreshed.refresh;
+				// Do not update originalRefreshToken here; let saveToDisk commit it.
 			} catch {
 				// ignore
 			}
@@ -800,7 +810,7 @@ export class AccountManager {
 				account.email = email;
 				account.plan = plan;
 				account.refreshToken = refreshed.refresh;
-				account.originalRefreshToken = refreshed.refresh;
+				// Do not update originalRefreshToken here; let saveToDisk commit it.
 				repaired.push(account);
 			} catch {
 				quarantined.push(account);
@@ -914,24 +924,66 @@ export class AccountManager {
 
 	async saveToDisk(): Promise<void> {
 		const snapshot = this.getStorageSnapshot();
-		let accountsToSave: AccountStorageV3["accounts"] = snapshot.accounts;
-		try {
-			const latest = await loadAccounts();
+		
+		await saveAccountsWithLock((latest) => {
+			let accountsToSave: AccountStorageV3["accounts"] = snapshot.accounts;
 			if (latest?.accounts && latest.accounts.length > 0) {
 				accountsToSave = mergeAccountRecords(latest.accounts, this.accounts);
 			}
-		} catch {
-			accountsToSave = snapshot.accounts;
-		}
 
-		const storage: AccountStorageV3 = {
-			version: 3,
-			accounts: accountsToSave,
-			activeIndex: Math.min(snapshot.activeIndex, Math.max(0, accountsToSave.length - 1)),
-			activeIndexByFamily: snapshot.activeIndexByFamily,
-		};
+			const findSavedIndex = (
+				candidate: AccountStorageV3["accounts"][number] | null | undefined,
+			): number => {
+				if (!candidate) return -1;
+				const matchIndex = findAccountMatchIndex(accountsToSave, {
+					accountId: candidate.accountId,
+					plan: candidate.plan,
+					email: candidate.email,
+				});
+				if (matchIndex >= 0) return matchIndex;
+				if (!candidate.accountId || !candidate.email || !candidate.plan) {
+					return accountsToSave.findIndex(
+						(account) => account.refreshToken === candidate.refreshToken,
+					);
+				}
+				return -1;
+			};
 
-		await saveAccounts(storage);
+			const snapshotActive = snapshot.accounts[snapshot.activeIndex] ?? null;
+			const mappedActiveIndex = findSavedIndex(snapshotActive);
+			const activeIndex =
+				accountsToSave.length > 0
+					? mappedActiveIndex >= 0
+						? mappedActiveIndex
+						: Math.min(snapshot.activeIndex, Math.max(0, accountsToSave.length - 1))
+					: 0;
+
+			const activeIndexByFamily: AccountStorageV3["activeIndexByFamily"] = {};
+			if (accountsToSave.length > 0) {
+				for (const family of MODEL_FAMILIES) {
+					const rawIndex = snapshot.activeIndexByFamily?.[family];
+					let candidate: AccountStorageV3["accounts"][number] | null = null;
+					if (typeof rawIndex === "number" && Number.isFinite(rawIndex)) {
+						const clamped = Math.min(
+							Math.max(0, Math.floor(rawIndex)),
+							snapshot.accounts.length - 1,
+						);
+						candidate = snapshot.accounts[clamped] ?? null;
+					}
+					const mappedFamilyIndex = findSavedIndex(candidate);
+					activeIndexByFamily[family] =
+						mappedFamilyIndex >= 0 ? mappedFamilyIndex : activeIndex;
+				}
+			}
+
+			const storage: AccountStorageV3 = {
+				version: 3,
+				accounts: accountsToSave,
+				activeIndex,
+				activeIndexByFamily,
+			};
+			return storage;
+		});
 
 		// Update originalRefreshToken to reflect saved state
 		for (const account of this.accounts) {

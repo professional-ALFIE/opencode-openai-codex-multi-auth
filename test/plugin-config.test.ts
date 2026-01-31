@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
 	loadPluginConfig,
 	getCodexMode,
+	getPerProjectAccounts,
 	getSchedulingMode,
 	getMaxCacheFirstWaitSeconds,
 } from '../lib/config.js';
@@ -25,6 +26,7 @@ describe('Plugin Configuration', () => {
 	const mockReadFileSync = vi.mocked(fs.readFileSync);
 	const trackedEnvVars = [
 		'CODEX_MODE',
+		'CODEX_AUTH_PER_PROJECT_ACCOUNTS',
 		'CODEX_AUTH_SCHEDULING_MODE',
 		'CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS',
 	] as const;
@@ -54,6 +56,7 @@ describe('Plugin Configuration', () => {
 			accountSelectionStrategy: 'sticky',
 			pidOffsetEnabled: true,
 			quietMode: false,
+			perProjectAccounts: false,
 			retryAllAccountsRateLimited: false,
 			retryAllAccountsMaxWaitMs: 30_000,
 			retryAllAccountsMaxRetries: 1,
@@ -122,6 +125,35 @@ describe('Plugin Configuration', () => {
 			expect(config).toEqual(expectedDefault);
 			expect(consoleSpy).toHaveBeenCalled();
 			consoleSpy.mockRestore();
+		});
+	});
+
+	describe('getPerProjectAccounts', () => {
+		it('should default to false', () => {
+			delete process.env.CODEX_AUTH_PER_PROJECT_ACCOUNTS;
+			const config: PluginConfig = {};
+
+			const result = getPerProjectAccounts(config);
+
+			expect(result).toBe(false);
+		});
+
+		it('should use config value when env var not set', () => {
+			delete process.env.CODEX_AUTH_PER_PROJECT_ACCOUNTS;
+			const config: PluginConfig = { perProjectAccounts: true };
+
+			const result = getPerProjectAccounts(config);
+
+			expect(result).toBe(true);
+		});
+
+		it('should prioritize env var CODEX_AUTH_PER_PROJECT_ACCOUNTS=1 over config', () => {
+			process.env.CODEX_AUTH_PER_PROJECT_ACCOUNTS = '1';
+			const config: PluginConfig = { perProjectAccounts: false };
+
+			const result = getPerProjectAccounts(config);
+
+			expect(result).toBe(true);
 		});
 	});
 

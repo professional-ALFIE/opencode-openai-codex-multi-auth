@@ -50,6 +50,7 @@ const DEFAULT_CONFIG: PluginConfig = {
 	accountSelectionStrategy: "sticky",
 	pidOffsetEnabled: true,
 	quietMode: false,
+	perProjectAccounts: false,
 	retryAllAccountsRateLimited: false,
 	retryAllAccountsMaxWaitMs: 30_000,
 	retryAllAccountsMaxRetries: 1,
@@ -141,6 +142,14 @@ function resolveNumberSetting(
  */
 export function getCodexMode(pluginConfig: PluginConfig): boolean {
 	return resolveBooleanSetting("CODEX_MODE", pluginConfig.codexMode, true);
+}
+
+export function getPerProjectAccounts(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_PER_PROJECT_ACCOUNTS",
+		pluginConfig.perProjectAccounts,
+		false,
+	);
 }
 
 export function getAccountSelectionStrategy(pluginConfig: PluginConfig):

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import lockfile from "proper-lockfile";
 
@@ -15,6 +15,50 @@ type RateLimitState = Record<string, number | undefined>;
 const STORAGE_FILE = "openai-codex-accounts.json";
 const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
 const MAX_QUARANTINE_FILES = 20;
+const MAX_BACKUP_FILES = 20;
+
+type StorageScope = "global" | "project";
+
+let storagePathOverride: string | null = null;
+let storageScopeOverride: StorageScope = "global";
+
+function findClosestProjectAccountsFile(startDir: string): string | null {
+	let current = resolve(startDir);
+	// Walk up to filesystem root.
+	while (true) {
+		const candidate = join(current, ".opencode", STORAGE_FILE);
+		if (existsSync(candidate)) return candidate;
+		const parent = dirname(current);
+		if (parent === current) return null;
+		current = parent;
+	}
+}
+
+export function configureStorageForCwd(options: {
+	cwd: string;
+	perProjectAccounts: boolean;
+}): { scope: StorageScope; storagePath: string } {
+	if (!options.perProjectAccounts) {
+		storagePathOverride = null;
+		storageScopeOverride = "global";
+		return { scope: "global", storagePath: getStoragePath() };
+	}
+
+	const projectPath = findClosestProjectAccountsFile(options.cwd);
+	if (projectPath) {
+		storagePathOverride = projectPath;
+		storageScopeOverride = "project";
+		return { scope: "project", storagePath: projectPath };
+	}
+
+	storagePathOverride = null;
+	storageScopeOverride = "global";
+	return { scope: "global", storagePath: getStoragePath() };
+}
+
+export function getStorageScope(): { scope: StorageScope; storagePath: string } {
+	return { scope: storageScopeOverride, storagePath: getStoragePath() };
+}
 
 function debug(...args: unknown[]): void {
 	if (!AUTH_DEBUG_ENABLED) return;
@@ -192,6 +236,39 @@ async function cleanupQuarantineFiles(storagePath: string): Promise<void> {
 	}
 }
 
+async function cleanupBackupFiles(storagePath: string): Promise<void> {
+	try {
+		const dir = dirname(storagePath);
+		const entries = await fs.readdir(dir);
+		const prefix = `${STORAGE_FILE}.bak-`;
+		const matches = entries
+			.filter((name) => name.startsWith(prefix))
+			.map((name) => {
+				const stampRaw = name.slice(prefix.length);
+				const stamp = Number.parseInt(stampRaw, 10);
+				return {
+					name,
+					stamp: Number.isFinite(stamp) ? stamp : 0,
+				};
+			})
+			.sort((a, b) => a.stamp - b.stamp);
+
+		if (matches.length <= MAX_BACKUP_FILES) return;
+		const toDelete = matches.slice(0, matches.length - MAX_BACKUP_FILES);
+		await Promise.all(
+			toDelete.map(async (entry) => {
+				try {
+					await fs.unlink(join(dir, entry.name));
+				} catch {
+					// ignore per-file deletion failures
+				}
+			}),
+		);
+	} catch {
+		// ignore cleanup failures
+	}
+}
+
 function getOpencodeConfigDir(): string {
 	const xdgConfigHome = process.env.XDG_CONFIG_HOME;
 	if (xdgConfigHome && xdgConfigHome.trim()) {
@@ -205,6 +282,7 @@ function getLegacyOpencodeDir(): string {
 }
 
 export function getStoragePath(): string {
+	if (storagePathOverride) return storagePathOverride;
 	return join(getOpencodeConfigDir(), STORAGE_FILE);
 }
 
@@ -223,6 +301,8 @@ export async function backupAccountsFile(): Promise<string | null> {
 	await withFileLock(filePath, async () => {
 		if (!existsSync(filePath)) return;
 		await fs.copyFile(filePath, backupPath);
+		await ensurePrivateFileMode(backupPath);
+		await cleanupBackupFiles(filePath);
 	});
 	return backupPath;
 }
@@ -354,19 +434,33 @@ function dedupeRefreshTokens(accounts: AccountRecord[]): {
 	return { accounts: deduped, changed };
 }
 
+type MergeAccountsOptions = {
+	preserveRefreshTokens?: boolean;
+};
+
+type SaveAccountsOptions = MergeAccountsOptions & {
+	replace?: boolean;
+};
+
 function mergeAccounts(
 	existing: AccountRecord[],
 	incoming: AccountRecord[],
+	options?: MergeAccountsOptions,
 ): { accounts: AccountRecord[]; changed: boolean } {
 	const merged = existing.map((account) => ({ ...account }));
 	let changed = false;
 
 	for (const candidate of incoming) {
-		const matchIndex = findAccountMatchIndex(merged, {
+		let matchIndex = findAccountMatchIndex(merged, {
 			accountId: candidate.accountId,
 			plan: candidate.plan,
 			email: candidate.email,
 		});
+		if (matchIndex < 0 && (!candidate.accountId || !candidate.email || !candidate.plan)) {
+			matchIndex = merged.findIndex(
+				(account) => account.refreshToken === candidate.refreshToken,
+			);
+		}
 		if (matchIndex < 0) {
 			merged.push({ ...candidate });
 			changed = true;
@@ -378,8 +472,11 @@ function mergeAccounts(
 		let didUpdate = false;
 
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
-			updated.refreshToken = candidate.refreshToken;
-			didUpdate = true;
+			const shouldPreserve = options?.preserveRefreshTokens === true;
+			if (!shouldPreserve || !updated.refreshToken) {
+				updated.refreshToken = candidate.refreshToken;
+				didUpdate = true;
+			}
 		}
 		if (!updated.accountId && candidate.accountId) {
 			updated.accountId = candidate.accountId;
@@ -481,22 +578,45 @@ function mergeAccounts(
 	return { accounts: deduped.accounts, changed };
 }
 
+function findAccountIndexByIdentityOrToken(
+	accounts: AccountRecord[],
+	candidate: AccountRecord | null,
+): number {
+	if (!candidate) return -1;
+	const matchIndex = findAccountMatchIndex(accounts, {
+		accountId: candidate.accountId,
+		plan: candidate.plan,
+		email: candidate.email,
+	});
+	if (matchIndex >= 0) return matchIndex;
+	if (!candidate.accountId || !candidate.email || !candidate.plan) {
+		return accounts.findIndex((account) => account.refreshToken === candidate.refreshToken);
+	}
+	return -1;
+}
+
 function mergeAccountStorage(
 	existing: AccountStorageV3,
 	incoming: AccountStorageV3,
+	options?: MergeAccountsOptions,
 ): AccountStorageV3 {
-	const { accounts: mergedAccounts } = mergeAccounts(existing.accounts, incoming.accounts);
-	const incomingActive =
-		incoming.activeIndex >= 0 && incoming.activeIndex < incoming.accounts.length
-			? incoming.accounts[incoming.activeIndex]
-			: null;
-	const mappedIndex = incomingActive
-		? findAccountMatchIndex(mergedAccounts, {
-				accountId: incomingActive.accountId,
-				plan: incomingActive.plan,
-				email: incomingActive.email,
-			})
-		: -1;
+	const { accounts: mergedAccounts } = mergeAccounts(
+		existing.accounts,
+		incoming.accounts,
+		options,
+	);
+	const getAccountAtIndex = (
+		source: AccountStorageV3,
+		index: number | undefined,
+	): AccountRecord | null => {
+		if (typeof index !== "number" || !Number.isFinite(index)) return null;
+		if (source.accounts.length === 0) return null;
+		const clamped = Math.min(Math.max(0, Math.floor(index)), source.accounts.length - 1);
+		return source.accounts[clamped] ?? null;
+	};
+
+	const incomingActive = getAccountAtIndex(incoming, incoming.activeIndex);
+	const mappedIndex = findAccountIndexByIdentityOrToken(mergedAccounts, incomingActive);
 	const baseActiveIndex =
 		mappedIndex >= 0
 			? mappedIndex
@@ -507,10 +627,28 @@ function mergeAccountStorage(
 		mergedAccounts.length > 0
 			? Math.min(Math.max(0, baseActiveIndex), mergedAccounts.length - 1)
 			: 0;
-	const activeIndexByFamily = {
-		...(existing.activeIndexByFamily ?? {}),
-		...(incoming.activeIndexByFamily ?? {}),
-	};
+	const activeIndexByFamily: AccountStorageV3["activeIndexByFamily"] = {};
+	const families = new Set([
+		...Object.keys(existing.activeIndexByFamily ?? {}),
+		...Object.keys(incoming.activeIndexByFamily ?? {}),
+	]);
+	for (const family of families) {
+		const incomingIndex = incoming.activeIndexByFamily?.[family];
+		const incomingAccount = getAccountAtIndex(incoming, incomingIndex);
+		let mappedFamilyIndex = findAccountIndexByIdentityOrToken(
+			mergedAccounts,
+			incomingAccount,
+		);
+		if (mappedFamilyIndex < 0) {
+			const existingIndex = existing.activeIndexByFamily?.[family];
+			const existingAccount = getAccountAtIndex(existing, existingIndex);
+			mappedFamilyIndex = findAccountIndexByIdentityOrToken(
+				mergedAccounts,
+				existingAccount,
+			);
+		}
+		activeIndexByFamily[family] = mappedFamilyIndex >= 0 ? mappedFamilyIndex : activeIndex;
+	}
 	return {
 		version: 3,
 		accounts: mergedAccounts,
@@ -532,6 +670,7 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 	newPath: string,
 	legacyPath: string,
 ): Promise<void> {
+	if (getStorageScope().scope === "project") return;
 	if (!existsSync(legacyPath)) return;
 	try {
 		const [newRaw, legacyRaw] = await Promise.all([
@@ -600,6 +739,38 @@ async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | 
 		return normalizeStorage(parsed);
 	} catch {
 		return null;
+	}
+}
+
+export async function saveAccountsWithLock(
+	mergeFn: (existing: AccountStorageV3 | null) => AccountStorageV3,
+): Promise<void> {
+	const filePath = getStoragePath();
+	debug(`[SaveAccountsWithLock] Saving to ${filePath}`);
+
+	try {
+		await withFileLock(filePath, async () => {
+			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
+			const existing = await loadAccountsUnsafe(filePath);
+			const mergedStorage = mergeFn(existing);
+			const jsonContent = JSON.stringify(mergedStorage, null, 2);
+			debug(`[SaveAccountsWithLock] Writing ${jsonContent.length} bytes`);
+			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
+			try {
+				await fs.writeFile(tmpPath, jsonContent, "utf-8");
+				await fs.rename(tmpPath, filePath);
+			} catch (error) {
+				try {
+					await fs.unlink(tmpPath);
+				} catch {
+					// ignore cleanup errors
+				}
+				throw error;
+			}
+		});
+	} catch (error) {
+		console.error("[SaveAccountsWithLock] Error saving accounts:", error);
+		throw error;
 	}
 }
 
@@ -811,7 +982,10 @@ export function toggleAccountEnabled(
 	return { ...storage, accounts };
 }
 
-export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
+export async function saveAccounts(
+	storage: AccountStorageV3,
+	options?: SaveAccountsOptions,
+): Promise<void> {
 	const filePath = getStoragePath();
 	debug(`[SaveAccounts] Saving to ${filePath} with ${storage.accounts.length} accounts`);
 
@@ -819,7 +993,10 @@ export async function saveAccounts(storage: AccountStorageV3): Promise<void> {
 		await withFileLock(filePath, async () => {
 			await migrateLegacyAccountsFileIfNeededLocked(filePath, getLegacyStoragePath());
 			const existing = await loadAccountsUnsafe(filePath);
-			const mergedStorage = existing ? mergeAccountStorage(existing, storage) : storage;
+			const mergedStorage =
+				existing && !options?.replace
+					? mergeAccountStorage(existing, storage, options)
+					: storage;
 			const jsonContent = JSON.stringify(mergedStorage, null, 2);
 			debug(`[SaveAccounts] Writing ${jsonContent.length} bytes`);
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;

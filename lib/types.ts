@@ -34,6 +34,14 @@ export interface PluginConfig {
 	quietMode?: boolean;
 
 	/**
+	 * Store accounts per-project when a repo-local accounts file exists.
+	 * When enabled, the plugin searches upward from the current working directory
+	 * for `.opencode/openai-codex-accounts.json` and uses it exclusively.
+	 * @default false
+	 */
+	perProjectAccounts?: boolean;
+
+	/**
 	 * Milliseconds before token expiry to proactively refresh.
 	 * @default 60000
 	 */

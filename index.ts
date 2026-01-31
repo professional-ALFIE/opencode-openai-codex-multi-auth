@@ -92,7 +92,12 @@ import {
 } from "./lib/cli.js";
 import { withTerminalModeRestored } from "./lib/terminal.js";
 import {
+	configureStorageForCurrentCwd,
+	configureStorageForPluginConfig,
+} from "./lib/storage-scope.js";
+import {
 	getStoragePath,
+	getStorageScope,
 	autoQuarantineCorruptAccountsFile,
 	inspectAccountsFile,
 	loadAccounts,
@@ -161,6 +166,8 @@ function parseRetryAfterMs(headers: Headers): number | null {
 export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 	let cachedAccountManager: AccountManager | null = null;
 	let proactiveRefreshScheduler: RefreshScheduler | null = null;
+
+	configureStorageForPluginConfig(loadPluginConfig(), process.cwd());
 
 	const showToast = async (
 		message: string,
@@ -288,6 +295,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				}
 
 				const pluginConfig = loadPluginConfig();
+				configureStorageForPluginConfig(pluginConfig, process.cwd());
 				const quietMode = getQuietMode(pluginConfig);
 
 				const accountManager = await AccountManager.loadFromDisk(auth);
@@ -487,13 +495,16 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									} else {
 										await replaceAccountsFile(snapshot);
 									}
-									if (repair.quarantined.length > 0 && quarantinePath) {
-										await showToast(
-											`Auto-repair failed for ${repair.quarantined.length} account(s). Quarantined: ${quarantinePath}`,
-											"warning",
-											quietMode,
-										);
-									} else if (repair.repaired.length > 0) {
+								if (repair.quarantined.length > 0 && quarantinePath) {
+									logDebug(
+										`[${PLUGIN_NAME}] Auto-repair quarantined: ${quarantinePath}`,
+									);
+									await showToast(
+										`Auto-repair failed for ${repair.quarantined.length} account(s).`,
+										"warning",
+										quietMode,
+									);
+								} else if (repair.repaired.length > 0) {
 										await showToast(
 											`Auto-repaired ${repair.repaired.length} account(s).`,
 											"success",
@@ -753,8 +764,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					 *
 					 * @returns Authorization flow configuration
 					 */
-					authorize: async (inputs?: Record<string, string>) => {
+						authorize: async (inputs?: Record<string, string>) => {
 					const pluginConfig = loadPluginConfig();
+					configureStorageForPluginConfig(pluginConfig, process.cwd());
 					const quietMode = getQuietMode(pluginConfig);
 					const isCliFlow = Boolean(inputs);
 					const notifyRepairResult = async (message: string) => {
@@ -786,9 +798,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							const quarantinePath = await quarantineCorruptFile();
 							if (quarantinePath) {
 								quarantinePaths.push(quarantinePath);
-								await notifyRepairResult(
-									`Accounts file was corrupted. Quarantined to ${quarantinePath}.`,
+								logDebug(
+									`[${PLUGIN_NAME}] Accounts file quarantined: ${quarantinePath}`,
 								);
+								await notifyRepairResult("Accounts file was corrupted and quarantined.");
 							}
 							return await loadAccounts();
 						}
@@ -831,10 +844,14 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 							`Repaired ${repair.repaired.length}`,
 							`quarantined ${repair.quarantined.length}`,
 						];
-						const detail = quarantinePaths.length
-							? ` Quarantine: ${quarantinePaths.join(", ")}.`
-							: "";
-						await notifyRepairResult(`Account repair complete. ${summaryParts.join(", ")}.${detail}`);
+						if (quarantinePaths.length > 0) {
+							logDebug(
+								`[${PLUGIN_NAME}] Repair quarantine paths: ${quarantinePaths.join(", ")}`,
+							);
+						}
+						await notifyRepairResult(
+							`Account repair complete. ${summaryParts.join(", ")}.`,
+						);
 						return updatedStorage;
 					};
 					const repairedStorage = await maybeRepairAccounts();
@@ -946,7 +963,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								if (toggleIndex === null) break;
 								const toggled = toggleAccountEnabled(updatedStorage, toggleIndex);
 								if (toggled) {
-									await saveAccounts(toggled);
+								await saveAccounts(toggled, { preserveRefreshTokens: true });
 									updatedStorage = toggled;
 								}
 							}
@@ -963,14 +980,17 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						startFresh = mode === "fresh";
 					}
 
-							if (startFresh) {
-								await saveAccounts({
+						if (startFresh) {
+							await saveAccounts(
+								{
 									version: 3,
 									accounts: [],
 									activeIndex: 0,
 									activeIndexByFamily: {},
-								});
-							}
+								},
+								{ replace: true },
+							);
+						}
 
 							while (authenticated.length < MAX_ACCOUNTS) {
 								console.log(`\n=== OpenAI OAuth (Account ${authenticated.length + 1}) ===`);
@@ -1153,67 +1173,87 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			],
 		},
 		tool: {
-			"openai-accounts": tool({
-				description: "List all configured OpenAI OAuth accounts.",
-				args: {},
-				async execute() {
-					const storage = await loadAccounts();
-					const storePath = getStoragePath();
-					if (!storage || storage.accounts.length === 0) {
-						return [
-							"No OpenAI accounts configured.",
-							"",
-							"Add accounts:",
-							"  opencode auth login",
-							"",
-							`Storage: ${storePath}`,
-						].join("\n");
-					}
+		"openai-accounts": tool({
+			description: "List all configured OpenAI OAuth accounts.",
+			args: {},
+			async execute() {
+				configureStorageForCurrentCwd();
+				const storage = await loadAccounts();
+				const { scope, storagePath } = getStorageScope();
+				const scopeLabel = scope === "project" ? "project" : "global";
 
-					const activeIndex =
-						typeof storage.activeIndex === "number" && Number.isFinite(storage.activeIndex)
-							? storage.activeIndex
-							: 0;
-					const now = Date.now();
-					const lines: string[] = [
-						`OpenAI Accounts (${storage.accounts.length}):`,
-						"",
-						" #  Label                                     Status",
-						"----------------------------------------------- ---------------------",
-					];
-						storage.accounts.forEach((account, index) => {
-							const label = formatAccountLabel(account, index);
-							const statuses: string[] = [];
-							if (index === activeIndex) statuses.push("active");
-							if (account.enabled === false) statuses.push("disabled");
-							const rateLimited =
-								account.rateLimitResetTimes &&
-								Object.values(account.rateLimitResetTimes).some(
-								(t) => typeof t === "number" && t > now,
-							);
-						if (rateLimited) statuses.push("rate-limited");
-						if (
-							typeof account.coolingDownUntil === "number" &&
-							account.coolingDownUntil > now
-						) {
-							statuses.push("cooldown");
-						}
-						lines.push(
-							`${String(index + 1).padEnd(3)} ${label.padEnd(40)} ${
-								statuses.length > 0 ? statuses.join(", ") : "ok"
-							}`,
+				if (!storage || storage.accounts.length === 0) {
+					return [
+						`OpenAI Codex Status`,
+						``,
+						`  Scope: ${scopeLabel}`,
+						`  Accounts: 0`,
+						``,
+						`Add accounts:`,
+						`  opencode auth login`,
+						``,
+						`Storage: ${storagePath}`,
+					].join("\n");
+				}
+
+				const activeIndex =
+					typeof storage.activeIndex === "number" && Number.isFinite(storage.activeIndex)
+						? storage.activeIndex
+						: 0;
+				const now = Date.now();
+				const enabledCount = storage.accounts.filter((a) => a.enabled !== false).length;
+				const rateLimitedCount = storage.accounts.filter(
+					(a) =>
+						a.rateLimitResetTimes &&
+						Object.values(a.rateLimitResetTimes).some(
+							(t) => typeof t === "number" && t > now,
+						),
+				).length;
+
+				const lines: string[] = [
+					`OpenAI Codex Status`,
+					``,
+					`  Scope: ${scopeLabel}`,
+					`  Accounts: ${enabledCount}/${storage.accounts.length} enabled`,
+					...(rateLimitedCount > 0 ? [`  Rate-limited: ${rateLimitedCount}`] : []),
+					``,
+					` #  Label                                     Status`,
+					`--- ----------------------------------------- ---------------------`,
+				];
+				storage.accounts.forEach((account, index) => {
+					const label = formatAccountLabel(account, index);
+					const statuses: string[] = [];
+					if (index === activeIndex) statuses.push("active");
+					if (account.enabled === false) statuses.push("disabled");
+					const rateLimited =
+						account.rateLimitResetTimes &&
+						Object.values(account.rateLimitResetTimes).some(
+							(t) => typeof t === "number" && t > now,
 						);
-					});
-					lines.push("", `Storage: ${storePath}`);
-					return lines.join("\n");
-				},
-			}),
+					if (rateLimited) statuses.push("rate-limited");
+					if (
+						typeof account.coolingDownUntil === "number" &&
+						account.coolingDownUntil > now
+					) {
+						statuses.push("cooldown");
+					}
+					lines.push(
+						`${String(index + 1).padEnd(3)} ${label.padEnd(41)} ${
+							statuses.length > 0 ? statuses.join(", ") : "ok"
+						}`,
+					);
+				});
+				lines.push("", `Storage: ${storagePath}`);
+				return lines.join("\n");
+			},
+		}),
 			"openai-accounts-switch": tool({
 				description: "Switch active OpenAI account by index (1-based).",
 				args: {
 					index: tool.schema.number().describe("Account number (1-based)"),
 				},
 				async execute({ index }) {
+					configureStorageForCurrentCwd();
 					const storage = await loadAccounts();
 					if (!storage || storage.accounts.length === 0) {
 						return "No OpenAI accounts configured. Run: opencode auth login";
@@ -1232,7 +1272,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 						account.lastUsed = Date.now();
 						account.lastSwitchReason = "rotation";
 					}
-					await saveAccounts(storage);
+					await saveAccounts(storage, { preserveRefreshTokens: true });
 					if (cachedAccountManager) {
 						cachedAccountManager.setActiveIndex(targetIndex);
 						await cachedAccountManager.saveToDisk();
@@ -1246,6 +1286,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					index: tool.schema.number().describe("Account number (1-based)"),
 				},
 				async execute({ index }) {
+					configureStorageForCurrentCwd();
 					const storage = await loadAccounts();
 					if (!storage || storage.accounts.length === 0) {
 						return "No OpenAI accounts configured. Run: opencode auth login";
@@ -1258,7 +1299,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 					if (!updated) {
 						return `Failed to toggle account number: ${index}`;
 					}
-					await saveAccounts(updated);
+					await saveAccounts(updated, { preserveRefreshTokens: true });
 					const account = updated.accounts[targetIndex];
 					if (cachedAccountManager) {
 						const live = cachedAccountManager.getAccountByIndex(targetIndex);
