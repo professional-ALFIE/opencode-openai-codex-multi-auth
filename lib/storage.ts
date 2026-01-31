@@ -8,6 +8,24 @@ import lockfile from "proper-lockfile";
 import type { AccountStorageV3 } from "./types.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 
+const PLAN_TYPE_LABELS: Record<string, string> = {
+	free: "Free",
+	plus: "Plus",
+	pro: "Pro",
+	team: "Team",
+	business: "Business",
+	enterprise: "Enterprise",
+	edu: "Edu",
+};
+
+function normalizePlanType(planType: unknown): string | undefined {
+	if (typeof planType !== "string") return undefined;
+	const trimmed = planType.trim();
+	if (!trimmed) return undefined;
+	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
+	return mapped ?? trimmed;
+}
+
 type AccountRecord = AccountStorageV3["accounts"][number];
 
 type RateLimitState = Record<string, number | undefined>;
@@ -105,7 +123,7 @@ function normalizeAccountRecord(candidate: unknown, now: number): AccountRecord 
 			: typeof record.chatgpt_plan_type === "string"
 				? record.chatgpt_plan_type
 				: undefined;
-	const plan = typeof planRaw === "string" && planRaw.trim() ? planRaw : undefined;
+	const plan = normalizePlanType(planRaw);
 	const enabled = typeof record.enabled === "boolean" ? record.enabled : undefined;
 
 	const addedAt =
@@ -732,7 +750,7 @@ async function migrateLegacyAccountsFileIfNeededLocked(
 	}
 }
 
-async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | null> {
+export async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | null> {
 	try {
 		const raw = await fs.readFile(filePath, "utf-8");
 		const parsed = JSON.parse(raw) as unknown;
@@ -743,6 +761,7 @@ async function loadAccountsUnsafe(filePath: string): Promise<AccountStorageV3 | 
 }
 
 export async function saveAccountsWithLock(
+
 	mergeFn: (existing: AccountStorageV3 | null) => AccountStorageV3,
 ): Promise<void> {
 	const filePath = getStoragePath();

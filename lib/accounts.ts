@@ -898,7 +898,9 @@ export class AccountManager {
 		const first = await this.refreshAccountWithLock(account, refreshFn);
 		if (first.type === "success") return first;
 
-		const latest = await loadAccounts().catch(() => null);
+		const { getStoragePath, loadAccountsUnsafe } = await import("./storage.js");
+		const currentPath = getStoragePath();
+		const latest = await loadAccountsUnsafe(currentPath).catch(() => null);
 		if (!latest?.accounts || latest.accounts.length === 0) return first;
 
 		const matchIndex = findAccountMatchIndex(latest.accounts, {
@@ -923,6 +925,7 @@ export class AccountManager {
 	}
 
 	async saveToDisk(): Promise<void> {
+
 		const snapshot = this.getStorageSnapshot();
 		
 		await saveAccountsWithLock((latest) => {
