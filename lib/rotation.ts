@@ -7,6 +7,46 @@
  * - LRU/freshness bias: prefer accounts that have rested longer
  */
 
+import { createHash } from "node:crypto";
+
+// ---------------------------------------------------------------------------
+// ACCOUNT IDENTITY
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal account identity for tracker keying.
+ * Uses accountId + email + plan for stable identity (matches storage conventions).
+ * Falls back to refreshToken hash for legacy accounts without full identity.
+ */
+export interface AccountIdentity {
+	accountId?: string;
+	email?: string;
+	plan?: string;
+	refreshToken?: string;
+	/** Account index is still needed for hybrid selection return values */
+	index?: number;
+}
+
+/**
+ * Generate a stable key for an account based on its identity.
+ * Priority: accountId+email+plan > refreshToken hash > "unknown"
+ */
+export function getAccountKey(account: AccountIdentity): string {
+	if (account.accountId && account.email && account.plan) {
+		const email = account.email.toLowerCase();
+		const plan = account.plan.toLowerCase();
+		return `${account.accountId}|${email}|${plan}`;
+	}
+	if (account.refreshToken) {
+		return createHash("sha256").update(account.refreshToken).digest("hex").substring(0, 16);
+	}
+	// Last resort: use index if available
+	if (typeof account.index === "number") {
+		return `idx:${account.index}`;
+	}
+	return "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // HEALTH SCORE
 // ---------------------------------------------------------------------------
@@ -26,6 +66,8 @@ export interface HealthScoreConfig {
 	minUsable: number;
 	/** Maximum score cap (default: 100) */
 	maxScore: number;
+	/** Cleanup stale entries after this many ms of inactivity (default: 24 hours) */
+	staleAfterMs: number;
 }
 
 export const DEFAULT_HEALTH_SCORE_CONFIG: HealthScoreConfig = {
@@ -36,6 +78,7 @@ export const DEFAULT_HEALTH_SCORE_CONFIG: HealthScoreConfig = {
 	recoveryRatePerHour: 2,
 	minUsable: 50,
 	maxScore: 100,
+	staleAfterMs: 24 * 60 * 60 * 1000, // 24 hours
 };
 
 interface HealthScoreState {
@@ -45,15 +88,31 @@ interface HealthScoreState {
 }
 
 export class HealthScoreTracker {
-	private readonly scores = new Map<number, HealthScoreState>();
+	private readonly scores = new Map<string, HealthScoreState>();
 	private readonly config: HealthScoreConfig;
+	private lastCleanup = 0;
+	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
 
 	constructor(config: Partial<HealthScoreConfig> = {}) {
 		this.config = { ...DEFAULT_HEALTH_SCORE_CONFIG, ...config };
 	}
 
-	getScore(accountIndex: number): number {
-		const state = this.scores.get(accountIndex);
+	private cleanup(): void {
+		const now = Date.now();
+		if (now - this.lastCleanup < this.cleanupIntervalMs) return;
+		this.lastCleanup = now;
+
+		for (const [key, state] of this.scores) {
+			if (now - state.lastUpdated > this.config.staleAfterMs) {
+				this.scores.delete(key);
+			}
+		}
+	}
+
+	getScore(account: AccountIdentity): number {
+		this.cleanup();
+		const key = getAccountKey(account);
+		const state = this.scores.get(key);
 		if (!state) return this.config.initial;
 
 		const now = Date.now();
@@ -63,40 +122,51 @@ export class HealthScoreTracker {
 		return Math.min(this.config.maxScore, state.score + recovered);
 	}
 
-	isUsable(accountIndex: number): boolean {
-		return this.getScore(accountIndex) >= this.config.minUsable;
+	isUsable(account: AccountIdentity): boolean {
+		return this.getScore(account) >= this.config.minUsable;
 	}
 
-	recordSuccess(accountIndex: number): void {
+	recordSuccess(account: AccountIdentity): void {
+		this.cleanup();
+		const key = getAccountKey(account);
 		const now = Date.now();
-		const current = this.getScore(accountIndex);
-		this.scores.set(accountIndex, {
+		const current = this.getScore(account);
+		this.scores.set(key, {
 			score: Math.min(this.config.maxScore, current + this.config.successReward),
 			lastUpdated: now,
 			consecutiveFailures: 0,
 		});
 	}
 
-	recordRateLimit(accountIndex: number): void {
+	recordRateLimit(account: AccountIdentity): void {
+		this.cleanup();
+		const key = getAccountKey(account);
 		const now = Date.now();
-		const previous = this.scores.get(accountIndex);
-		const current = this.getScore(accountIndex);
-		this.scores.set(accountIndex, {
+		const previous = this.scores.get(key);
+		const current = this.getScore(account);
+		this.scores.set(key, {
 			score: Math.max(0, current + this.config.rateLimitPenalty),
 			lastUpdated: now,
 			consecutiveFailures: (previous?.consecutiveFailures ?? 0) + 1,
 		});
 	}
 
-	recordFailure(accountIndex: number): void {
+	recordFailure(account: AccountIdentity): void {
+		this.cleanup();
+		const key = getAccountKey(account);
 		const now = Date.now();
-		const previous = this.scores.get(accountIndex);
-		const current = this.getScore(accountIndex);
-		this.scores.set(accountIndex, {
+		const previous = this.scores.get(key);
+		const current = this.getScore(account);
+		this.scores.set(key, {
 			score: Math.max(0, current + this.config.failurePenalty),
 			lastUpdated: now,
 			consecutiveFailures: (previous?.consecutiveFailures ?? 0) + 1,
 		});
+	}
+
+	/** For testing: get the number of tracked accounts */
+	size(): number {
+		return this.scores.size;
 	}
 }
 
@@ -111,12 +181,15 @@ export interface TokenBucketConfig {
 	regenerationRatePerMinute: number;
 	/** Initial tokens for new accounts (default: 50) */
 	initialTokens: number;
+	/** Cleanup stale entries after this many ms of inactivity (default: 1 hour) */
+	staleAfterMs: number;
 }
 
 export const DEFAULT_TOKEN_BUCKET_CONFIG: TokenBucketConfig = {
 	maxTokens: 50,
 	regenerationRatePerMinute: 6,
 	initialTokens: 50,
+	staleAfterMs: 60 * 60 * 1000, // 1 hour
 };
 
 interface TokenBucketState {
@@ -125,15 +198,31 @@ interface TokenBucketState {
 }
 
 export class TokenBucketTracker {
-	private readonly buckets = new Map<number, TokenBucketState>();
+	private readonly buckets = new Map<string, TokenBucketState>();
 	private readonly config: TokenBucketConfig;
+	private lastCleanup = 0;
+	private readonly cleanupIntervalMs = 60_000; // Cleanup check every minute
 
 	constructor(config: Partial<TokenBucketConfig> = {}) {
 		this.config = { ...DEFAULT_TOKEN_BUCKET_CONFIG, ...config };
 	}
 
-	getTokens(accountIndex: number): number {
-		const state = this.buckets.get(accountIndex);
+	private cleanup(): void {
+		const now = Date.now();
+		if (now - this.lastCleanup < this.cleanupIntervalMs) return;
+		this.lastCleanup = now;
+
+		for (const [key, state] of this.buckets) {
+			if (now - state.lastUpdated > this.config.staleAfterMs) {
+				this.buckets.delete(key);
+			}
+		}
+	}
+
+	getTokens(account: AccountIdentity): number {
+		this.cleanup();
+		const key = getAccountKey(account);
+		const state = this.buckets.get(key);
 		if (!state) return this.config.initialTokens;
 
 		const now = Date.now();
@@ -142,23 +231,27 @@ export class TokenBucketTracker {
 		return Math.min(this.config.maxTokens, state.tokens + recovered);
 	}
 
-	hasTokens(accountIndex: number, cost = 1): boolean {
-		return this.getTokens(accountIndex) >= cost;
+	hasTokens(account: AccountIdentity, cost = 1): boolean {
+		return this.getTokens(account) >= cost;
 	}
 
-	consume(accountIndex: number, cost = 1): boolean {
-		const current = this.getTokens(accountIndex);
+	consume(account: AccountIdentity, cost = 1): boolean {
+		this.cleanup();
+		const key = getAccountKey(account);
+		const current = this.getTokens(account);
 		if (current < cost) return false;
-		this.buckets.set(accountIndex, {
+		this.buckets.set(key, {
 			tokens: current - cost,
 			lastUpdated: Date.now(),
 		});
 		return true;
 	}
 
-	refund(accountIndex: number, amount = 1): void {
-		const current = this.getTokens(accountIndex);
-		this.buckets.set(accountIndex, {
+	refund(account: AccountIdentity, amount = 1): void {
+		this.cleanup();
+		const key = getAccountKey(account);
+		const current = this.getTokens(account);
+		this.buckets.set(key, {
 			tokens: Math.min(this.config.maxTokens, current + amount),
 			lastUpdated: Date.now(),
 		});
@@ -167,13 +260,18 @@ export class TokenBucketTracker {
 	getMaxTokens(): number {
 		return this.config.maxTokens;
 	}
+
+	/** For testing: get the number of tracked accounts */
+	size(): number {
+		return this.buckets.size;
+	}
 }
 
 // ---------------------------------------------------------------------------
 // HYBRID SELECTION
 // ---------------------------------------------------------------------------
 
-export interface AccountWithMetrics {
+export interface AccountWithMetrics extends AccountIdentity {
 	index: number;
 	lastUsed: number;
 	healthScore: number;
@@ -196,9 +294,9 @@ export function selectHybridAccount(
 				!acc.isRateLimited &&
 				!acc.isCoolingDown &&
 				acc.healthScore >= minHealthScore &&
-				tokenTracker.hasTokens(acc.index),
+				tokenTracker.hasTokens(acc),
 		)
-		.map((acc) => ({ ...acc, tokens: tokenTracker.getTokens(acc.index) }));
+		.map((acc) => ({ ...acc, tokens: tokenTracker.getTokens(acc) }));
 
 	if (candidates.length === 0) return null;
 

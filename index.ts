@@ -215,6 +215,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const pluginConfig = loadPluginConfig();
 				configureStorageForPluginConfig(pluginConfig, process.cwd());
 				const quietMode = getQuietMode(pluginConfig);
+				const toastDebounceMs = getRateLimitToastDebounceMs(pluginConfig);
 				const accountManager = await AccountManager.loadFromDisk(auth);
 				cachedAccountManager = accountManager;
 
@@ -375,7 +376,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 
 								let tokenConsumed = false;
 								if (getAccountSelectionStrategy(pluginConfig) === "hybrid") {
-									tokenConsumed = getTokenTracker().consume(account.index);
+									tokenConsumed = getTokenTracker().consume(account);
 									if (!tokenConsumed) continue;
 								}
 
@@ -422,23 +423,23 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										const codexHeaders: Record<string, string> = {};
 										try { res.headers.forEach((val, key) => { if (key.toLowerCase().startsWith("x-codex-")) codexHeaders[key.toLowerCase()] = val; }); } catch { }
 										if (Object.keys(codexHeaders).length > 0) await codexStatus.updateFromHeaders(account, codexHeaders);
-									} catch (err) {
-										if (tokenConsumed) getTokenTracker().refund(account.index);
-										if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordFailure(account.index);
-										throw err;
-									}
+							} catch (err) {
+									if (tokenConsumed) getTokenTracker().refund(account);
+									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordFailure(account);
+									throw err;
+								}
 
-									if (res.ok) {
-										if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordSuccess(account.index);
-										accountManager.markAccountUsed(account.index);
-										return await handleSuccessResponse(res, isStreaming);
-									}
+								if (res.ok) {
+									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordSuccess(account);
+									accountManager.markAccountUsed(account.index);
+									return await handleSuccessResponse(res, isStreaming);
+								}
 
-									const handled = await handleErrorResponse(res);
-									if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
-										if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordFailure(account.index);
-										return handled;
-									}
+								const handled = await handleErrorResponse(res);
+								if (handled.status !== HTTP_STATUS.TOO_MANY_REQUESTS) {
+									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordFailure(account);
+									return handled;
+								}
 
 									const retryAfterMs = parseRetryAfterMs(handled.headers);
 									let responseText = "";
@@ -446,8 +447,8 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 									const reason = parseRateLimitReason(handled.status, responseText);
 									const backoff = rateLimitTracker.getBackoff(`${account.index}:${modelFamily}:${model ?? ""}`, reason, retryAfterMs);
 									const decision = decideRateLimitAction({ schedulingMode: getSchedulingMode(pluginConfig), accountCount, maxCacheFirstWaitMs: Math.max(0, Math.floor(getMaxCacheFirstWaitSeconds(pluginConfig) * 1000)), switchOnFirstRateLimit: getSwitchOnFirstRateLimit(pluginConfig), shortRetryThresholdMs: RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS, backoff });
-									if (tokenConsumed) getTokenTracker().refund(account.index);
-									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordRateLimit(account.index);
+									if (tokenConsumed) getTokenTracker().refund(account);
+									if (getAccountSelectionStrategy(pluginConfig) === "hybrid") getHealthTracker().recordRateLimit(account);
 									accountManager.markRateLimited(account, backoff.delayMs, modelFamily, model);
 
 									if (decision.action === "wait") {
@@ -456,6 +457,10 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 										continue;
 									}
 									accountManager.markSwitched(account, "rate-limit", modelFamily);
+									if (!quietMode && accountManager.shouldShowAccountToast(account.index, toastDebounceMs)) {
+										accountManager.markToastShown(account.index);
+										void showToast(`Rate limited - switching account`, "warning", false);
+									}
 									if (!backoff.isDuplicate) await accountManager.saveToDisk();
 									break;
 								}
@@ -534,15 +539,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		config: async (cfg) => {
 			cfg.command = cfg.command || {};
 			cfg.command["codex-status"] = {
-				template: "Run the codex-status tool and show the output.",
+				template: "Run the codex-status tool and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
 				description: "List all configured OpenAI Codex accounts and their current rate limits.",
 			};
 			cfg.command["codex-switch-accounts"] = {
-				template: "Run the codex-switch-accounts tool with index $ARGUMENTS and show the output.",
+				template: "Run the codex-switch-accounts tool with index $ARGUMENTS and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
 				description: "Switch active OpenAI account by index (1-based).",
 			};
 			cfg.command["codex-toggle-account"] = {
-				template: "Run the codex-toggle-account tool with index $ARGUMENTS and show the output.",
+				template: "Run the codex-toggle-account tool with index $ARGUMENTS and output the result EXACTLY as returned by the tool, without any additional text or commentary.",
 				description: "Enable or disable an OpenAI account by index (1-based).",
 			};
 
@@ -555,31 +560,37 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			}
 		},
 		tool: {
-			"codex-status": tool({
-				description: "List all configured OpenAI Codex accounts and their current rate limits.",
-				args: {},
-				async execute() {
-					configureStorageForCurrentCwd();
-					const accountManager = await AccountManager.loadFromDisk();
-					await accountManager.hydrateMissingEmails();
-					await accountManager.saveToDisk();
-					const accounts = accountManager.getAccountsSnapshot();
-					const { scope, storagePath } = getStorageScope();
-					if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
+		"codex-status": tool({
+			description: "List all configured OpenAI Codex accounts and their current rate limits.",
+			args: {},
+			async execute() {
+				configureStorageForCurrentCwd();
+				const accountManager = await AccountManager.loadFromDisk();
+				// NOTE: Do NOT call hydrateMissingEmails() here - status should be read-only
+				// and not trigger token refreshes that could fail when rate-limited
+				const accounts = accountManager.getAccountsSnapshot();
+				const { scope, storagePath } = getStorageScope();
+				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
 
-					await Promise.all(accounts.map(async (acc, index) => {
-						if (acc.enabled === false) return;
-						const live = accountManager.getAccountByIndex(index);
-						if (live) {
-							if (shouldRefreshToken(accountManager.toAuthDetails(live), getTokenRefreshSkewMs(loadPluginConfig()))) {
-								const refreshResult = await accountManager.refreshAccountWithFallback(live);
-								if (refreshResult.type === "success") await codexStatus.fetchFromBackend(live, refreshResult.access);
-							} else {
-								const auth = accountManager.toAuthDetails(live);
-								if (auth.access) await codexStatus.fetchFromBackend(live, auth.access);
+				// Fetch status from backend using EXISTING tokens only (no refresh)
+				// The /wham/usage endpoint should work even when rate-limited for sending messages
+				await Promise.all(accounts.map(async (acc, index) => {
+					if (acc.enabled === false) return;
+					const live = accountManager.getAccountByIndex(index);
+					if (live) {
+						const auth = accountManager.toAuthDetails(live);
+						// Only fetch if we have a non-expired token - don't force refresh
+						const hasValidToken = auth.access && auth.expires > Date.now();
+						if (hasValidToken) {
+							try {
+								await codexStatus.fetchFromBackend(live, auth.access);
+							} catch {
+								// Silently fall back to cached snapshot if fetch fails
 							}
 						}
-					}));
+						// If no valid token, we'll use the cached snapshot (which may be stale)
+					}
+				}));
 
 					const now = Date.now();
 					const enabledCount = accounts.filter(a => a.enabled !== false).length;

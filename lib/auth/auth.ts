@@ -1,5 +1,6 @@
 import { generatePKCE } from "@openauthjs/openauth/pkce";
 import { randomBytes } from "node:crypto";
+import { logWarn } from "../logger.js";
 import type { PKCEPair, AuthorizationFlow, ParsedAuthInput, JWTPayload, TokenResult } from "../types.js";
 
 // OAuth constants (from openai/codex)
@@ -116,7 +117,7 @@ export async function exchangeAuthorizationCode(
 	});
 	if (!res.ok) {
 		const text = await res.text().catch(() => "");
-		console.error("[openai-codex-plugin] code->token failed:", res.status, text);
+		logWarn("code->token failed:", { status: res.status, text });
 		return { type: "failed" };
 	}
 	const json = (await res.json()) as {
@@ -130,7 +131,7 @@ export async function exchangeAuthorizationCode(
 		!json?.refresh_token ||
 		typeof json?.expires_in !== "number"
 	) {
-		console.error("[openai-codex-plugin] token response missing fields:", json);
+		logWarn("token response missing fields:", json);
 		return { type: "failed" };
 	}
 	return {
@@ -162,11 +163,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 
 		if (!response.ok) {
 			const text = await response.text().catch(() => "");
-			console.error(
-				"[openai-codex-plugin] Token refresh failed:",
-				response.status,
-				text,
-			);
+			logWarn("Token refresh failed:", { status: response.status, text });
 			return { type: "failed" };
 		}
 
@@ -181,10 +178,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 			!json?.refresh_token ||
 			typeof json?.expires_in !== "number"
 		) {
-			console.error(
-				"[openai-codex-plugin] Token refresh response missing fields:",
-				json,
-			);
+			logWarn("Token refresh response missing fields:", json);
 			return { type: "failed" };
 		}
 
@@ -198,7 +192,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
 		};
 	} catch (error) {
 		const err = error as Error;
-		console.error("[openai-codex-plugin] Token refresh error:", err);
+		logWarn("Token refresh error:", err);
 		return { type: "failed" };
 	}
 }

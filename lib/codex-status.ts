@@ -432,6 +432,8 @@ export class CodexStatusManager {
 				}
 
 				await this.updateFromSnapshot(account, data);
+			} else if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+				console.log(`[CodexStatus] Backend returned ${res.status} for ${account.email}, using cached snapshot`);
 			}
 		} catch (err) {
 			if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {

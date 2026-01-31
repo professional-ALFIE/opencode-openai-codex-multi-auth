@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here. Dates use the ISO format (YYYY-MM-DD).
 
+## [4.5.20] - 2026-01-31
+
+**Reliability & Identity Hardening release**: codex-status stability, memory safety, and identity-based tracking.
+
+### Changed
+- **codex-status Read-Only**: tool no longer forces token refresh; uses existing valid tokens and falls back to cached snapshots on failure.
+- **Identity-Based Trackers**: `HealthScoreTracker` and `TokenBucketTracker` now key on `accountId|email|plan` instead of array index for stability across account changes.
+- **Periodic Cleanup**: both trackers now auto-prune stale entries (24h for health, 1h for tokens) to prevent memory growth.
+- **Console Logging**: migrated `console.error` calls to `logWarn` to respect debug settings and avoid TUI corruption.
+- **Command Templates**: updated slash commands to output results exactly as returned by tools.
+
+### Added
+- **logCritical()**: new always-enabled logger for critical issues that bypass debug flags.
+- **Toast Notifications**: integrated debounced toast when switching accounts due to rate limits (respects `quietMode` config).
+- **Debug Logging**: added status fetch failure logging when `OPENCODE_OPENAI_AUTH_DEBUG=1`.
+
+### Fixed
+- **Memory Leak**: `RateLimitTracker` now cleans up stale entries periodically (every 60s).
+
+## [4.5.19] - 2026-01-31
+
+**Slash Commands release**: register codex tools as TUI slash commands.
+
+### Added
+- **Slash Commands**: `/codex-status`, `/codex-switch-accounts`, `/codex-toggle-account` now available via config hook.
+
 ## [4.5.18] - 2026-01-31
 
 **Tool Consolidation release**: finalized renaming of status and account management tools to match the `codex-*` namespace.

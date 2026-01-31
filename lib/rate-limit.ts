@@ -102,9 +102,24 @@ export function decideRateLimitAction(options: RateLimitDecisionInput): RateLimi
 export class RateLimitTracker {
 	private readonly state = new Map<string, RateLimitState>();
 	private readonly options: RateLimitTrackerOptions;
+	private lastCleanup = 0;
+	private readonly cleanupIntervalMs = 60_000; // Cleanup every minute
 
 	constructor(options: RateLimitTrackerOptions) {
 		this.options = options;
+	}
+
+	private cleanup(): void {
+		const now = Date.now();
+		if (now - this.lastCleanup < this.cleanupIntervalMs) return;
+		this.lastCleanup = now;
+
+		// Remove entries that have been reset (older than resetMs)
+		for (const [key, value] of this.state) {
+			if (now - value.lastAt > this.options.resetMs) {
+				this.state.delete(key);
+			}
+		}
 	}
 
 	getBackoff(
@@ -113,6 +128,8 @@ export class RateLimitTracker {
 		retryAfterMs: number | null,
 	): RateLimitBackoff {
 		const now = Date.now();
+		this.cleanup(); // Periodic cleanup to prevent unbounded growth
+
 		const current = this.state.get(key);
 		if (current && now - current.lastAt < this.options.dedupWindowMs) {
 			return {

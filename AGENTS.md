@@ -35,6 +35,7 @@ Key account behaviors:
 
 ## Agent Workflow
 
+- **Proactive Exploration:** Always invoke `Task(subagent_type="explore", prompt="...")` at the start of a new session or after a context compaction. Use the user's latest requests, active todos, and any compaction summaries to craft a prompt that gathers all necessary context for the current task.
 - Do not ask for confirmation before responding to subagents; proceed immediately.
 
 ## Test Fixtures (source of truth)

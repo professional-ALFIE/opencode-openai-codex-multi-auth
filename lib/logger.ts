@@ -53,10 +53,14 @@ export function logRequest(stage: string, data: Record<string, unknown>): void {
 			),
 			{ encoding: "utf8", mode: 0o600 },
 		);
-		console.log(`[${PLUGIN_NAME}] Logged ${stage} to ${filename}`);
+		// Silenced to avoid TUI corruption
+		// console.log(`[${PLUGIN_NAME}] Logged ${stage} to ${filename}`);
 	} catch (e) {
 		const error = e as Error;
-		console.error(`[${PLUGIN_NAME}] Failed to write log:`, error.message);
+		// Use stderr for actual failures but only if not in TUI mode or explicitly debugging
+		if (DEBUG_ENABLED) {
+			console.error(`[${PLUGIN_NAME}] Failed to write log:`, error.message);
+		}
 	}
 }
 
@@ -76,7 +80,7 @@ export function logDebug(message: string, data?: unknown): void {
 }
 
 /**
- * Log warning (always enabled for important issues)
+ * Log warning (only when DEBUG or LOGGING is enabled)
  * @param message - Warning message
  * @param data - Optional data to log
  */
@@ -86,5 +90,19 @@ export function logWarn(message: string, data?: unknown): void {
 		console.warn(`[${PLUGIN_NAME}] ${message}`, data);
 	} else {
 		console.warn(`[${PLUGIN_NAME}] ${message}`);
+	}
+}
+
+/**
+ * Log critical issues (always enabled - bypasses debug flags)
+ * Use sparingly for issues that users must see regardless of debug settings.
+ * @param message - Critical message
+ * @param data - Optional data to log
+ */
+export function logCritical(message: string, data?: unknown): void {
+	if (data !== undefined) {
+		console.error(`[${PLUGIN_NAME}] ${message}`, data);
+	} else {
+		console.error(`[${PLUGIN_NAME}] ${message}`);
 	}
 }

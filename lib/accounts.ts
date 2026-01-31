@@ -536,8 +536,12 @@ export class AccountManager {
 				clearExpiredRateLimits(acc);
 				return {
 					index: acc.index,
+					accountId: acc.accountId,
+					email: acc.email,
+					plan: acc.plan,
+					refreshToken: acc.refreshToken,
 					lastUsed: acc.lastUsed,
-					healthScore: healthTracker.getScore(acc.index),
+					healthScore: healthTracker.getScore(acc),
 					isRateLimited: isRateLimitedForFamily(acc, family, model),
 					isCoolingDown: this.isAccountCoolingDown(acc),
 				};
