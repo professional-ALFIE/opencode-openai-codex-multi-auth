@@ -1,0 +1,62 @@
+[
+  [
+    "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708|user.one@example.com|Plus",
+    {
+      "accountId": "1f2e3d4c-5b6a-7980-91a2-b3c4d5e6f708",
+      "email": "user.one@example.com",
+      "plan": "Plus",
+      "updatedAt": 1769552000000,
+      "primary": {
+        "usedPercent": 45.5,
+        "windowMinutes": 180,
+        "resetAt": 1769562800000
+      },
+      "secondary": {
+        "usedPercent": 10.2,
+        "windowMinutes": 10080,
+        "resetAt": 1770156800000
+      },
+      "credits": null
+    }
+  ],
+  [
+    "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a|user.one@example.com|Team",
+    {
+      "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+      "email": "user.one@example.com",
+      "plan": "Team",
+      "updatedAt": 1769552100000,
+      "primary": {
+        "usedPercent": 0,
+        "windowMinutes": 180,
+        "resetAt": 1769562900000
+      },
+      "secondary": null,
+      "credits": {
+        "hasCredits": true,
+        "unlimited": false,
+        "balance": 15.5
+      }
+    }
+  ],
+  [
+    "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a|user.two@example.com|Team",
+    {
+      "accountId": "c4e5f6a7-8b9c-4d1e-8f2a-3b4c5d6e7f8a",
+      "email": "user.two@example.com",
+      "plan": "Team",
+      "updatedAt": 1769552200000,
+      "primary": {
+        "usedPercent": 100,
+        "windowMinutes": 180,
+        "resetAt": 1769563000000
+      },
+      "secondary": null,
+      "credits": {
+        "hasCredits": true,
+        "unlimited": true,
+        "balance": 0
+      }
+    }
+  ]
+]
