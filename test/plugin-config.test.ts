@@ -5,6 +5,8 @@ import {
 	getPerProjectAccounts,
 	getSchedulingMode,
 	getMaxCacheFirstWaitSeconds,
+	getAuthDebugEnabled,
+	getNoBrowser,
 } from '../lib/config.js';
 import type { PluginConfig } from '../lib/types.js';
 import * as fs from 'node:fs';
@@ -26,9 +28,16 @@ describe('Plugin Configuration', () => {
 	const mockReadFileSync = vi.mocked(fs.readFileSync);
 	const trackedEnvVars = [
 		'CODEX_MODE',
+		'CODEX_AUTH_MODE',
 		'CODEX_AUTH_PER_PROJECT_ACCOUNTS',
 		'CODEX_AUTH_SCHEDULING_MODE',
 		'CODEX_AUTH_MAX_CACHE_FIRST_WAIT_SECONDS',
+		'CODEX_AUTH_DEBUG',
+		'OPENCODE_OPENAI_AUTH_DEBUG',
+		'DEBUG_CODEX_PLUGIN',
+		'CODEX_AUTH_NO_BROWSER',
+		'OPENCODE_NO_BROWSER',
+		'OPENCODE_HEADLESS',
 	] as const;
 	let originalEnv: Record<string, string | undefined>;
 
@@ -212,6 +221,16 @@ describe('Plugin Configuration', () => {
 
 			expect(result).toBe(true);
 		});
+
+		it('should prioritize CODEX_AUTH_MODE over CODEX_MODE', () => {
+			process.env.CODEX_AUTH_MODE = '1';
+			process.env.CODEX_MODE = '0';
+			const config: PluginConfig = { codexMode: false };
+
+			const result = getCodexMode(config);
+
+			expect(result).toBe(true);
+		});
 	});
 
 	describe('getSchedulingMode', () => {
@@ -268,6 +287,64 @@ describe('Plugin Configuration', () => {
 			const result = getMaxCacheFirstWaitSeconds(config);
 
 			expect(result).toBe(30);
+		});
+	});
+
+	describe('getAuthDebugEnabled', () => {
+		it('should return false by default', () => {
+			delete process.env.CODEX_AUTH_DEBUG;
+			delete process.env.OPENCODE_OPENAI_AUTH_DEBUG;
+			delete process.env.DEBUG_CODEX_PLUGIN;
+			expect(getAuthDebugEnabled()).toBe(false);
+		});
+
+		it('should check CODEX_AUTH_DEBUG first', () => {
+			process.env.CODEX_AUTH_DEBUG = '1';
+			process.env.OPENCODE_OPENAI_AUTH_DEBUG = '0';
+			expect(getAuthDebugEnabled()).toBe(true);
+		});
+
+		it('should check OPENCODE_OPENAI_AUTH_DEBUG second', () => {
+			delete process.env.CODEX_AUTH_DEBUG;
+			process.env.OPENCODE_OPENAI_AUTH_DEBUG = '1';
+			process.env.DEBUG_CODEX_PLUGIN = '0';
+			expect(getAuthDebugEnabled()).toBe(true);
+		});
+
+		it('should check DEBUG_CODEX_PLUGIN third', () => {
+			delete process.env.CODEX_AUTH_DEBUG;
+			delete process.env.OPENCODE_OPENAI_AUTH_DEBUG;
+			process.env.DEBUG_CODEX_PLUGIN = '1';
+			expect(getAuthDebugEnabled()).toBe(true);
+		});
+	});
+
+	describe('getNoBrowser', () => {
+		it('should return false by default', () => {
+			delete process.env.CODEX_AUTH_NO_BROWSER;
+			delete process.env.OPENCODE_NO_BROWSER;
+			delete process.env.OPENCODE_HEADLESS;
+			expect(getNoBrowser()).toBe(false);
+		});
+
+		it('should check CODEX_AUTH_NO_BROWSER first', () => {
+			process.env.CODEX_AUTH_NO_BROWSER = '1';
+			process.env.OPENCODE_NO_BROWSER = '0';
+			expect(getNoBrowser()).toBe(true);
+		});
+
+		it('should check OPENCODE_NO_BROWSER second', () => {
+			delete process.env.CODEX_AUTH_NO_BROWSER;
+			process.env.OPENCODE_NO_BROWSER = '1';
+			process.env.OPENCODE_HEADLESS = '0';
+			expect(getNoBrowser()).toBe(true);
+		});
+
+		it('should check OPENCODE_HEADLESS third', () => {
+			delete process.env.CODEX_AUTH_NO_BROWSER;
+			delete process.env.OPENCODE_NO_BROWSER;
+			process.env.OPENCODE_HEADLESS = '1';
+			expect(getNoBrowser()).toBe(true);
 		});
 	});
 

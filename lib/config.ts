@@ -97,6 +97,14 @@ export function loadPluginConfig(): PluginConfig {
 	}
 }
 
+function getEnvWithAlias(primary: string, ...aliases: string[]): string | undefined {
+	if (process.env[primary]) return process.env[primary];
+	for (const alias of aliases) {
+		if (process.env[alias]) return process.env[alias];
+	}
+	return undefined;
+}
+
 function parseBooleanEnv(value: string | undefined): boolean | undefined {
 	if (value === undefined) return undefined;
 	if (value === "1" || value === "true") return true;
@@ -112,22 +120,24 @@ function parseNumberEnv(value: string | undefined): number | undefined {
 }
 
 function resolveBooleanSetting(
-	envName: string,
+	envNames: string | string[],
 	configValue: boolean | undefined,
 	defaultValue: boolean,
 ): boolean {
-	const envValue = parseBooleanEnv(process.env[envName]);
+	const names = Array.isArray(envNames) ? envNames : [envNames];
+	const envValue = parseBooleanEnv(getEnvWithAlias(names[0], ...names.slice(1)));
 	if (envValue !== undefined) return envValue;
 	return configValue ?? defaultValue;
 }
 
 function resolveNumberSetting(
-	envName: string,
+	envNames: string | string[],
 	configValue: number | undefined,
 	defaultValue: number,
 	options?: { min?: number },
 ): number {
-	const envValue = parseNumberEnv(process.env[envName]);
+	const names = Array.isArray(envNames) ? envNames : [envNames];
+	const envValue = parseNumberEnv(getEnvWithAlias(names[0], ...names.slice(1)));
 	const candidate = envValue ?? configValue ?? defaultValue;
 	const min = options?.min;
 	if (min !== undefined) return Math.max(min, candidate);
@@ -142,7 +152,11 @@ function resolveNumberSetting(
  * @returns True if CODEX_MODE should be enabled
  */
 export function getCodexMode(pluginConfig: PluginConfig): boolean {
-	return resolveBooleanSetting("CODEX_MODE", pluginConfig.codexMode, true);
+	return resolveBooleanSetting(
+		["CODEX_AUTH_MODE", "CODEX_MODE"],
+		pluginConfig.codexMode,
+		true,
+	);
 }
 
 export function getPerProjectAccounts(pluginConfig: PluginConfig): boolean {
@@ -294,5 +308,29 @@ export function getProactiveTokenRefresh(pluginConfig: PluginConfig): boolean {
 		"CODEX_AUTH_PROACTIVE_TOKEN_REFRESH",
 		pluginConfig.proactiveTokenRefresh,
 		false,
+	);
+}
+
+export function getAuthDebugEnabled(): boolean {
+	return (
+		parseBooleanEnv(
+			getEnvWithAlias(
+				"CODEX_AUTH_DEBUG",
+				"OPENCODE_OPENAI_AUTH_DEBUG",
+				"DEBUG_CODEX_PLUGIN",
+			),
+		) ?? false
+	);
+}
+
+export function getNoBrowser(): boolean {
+	return (
+		parseBooleanEnv(
+			getEnvWithAlias(
+				"CODEX_AUTH_NO_BROWSER",
+				"OPENCODE_NO_BROWSER",
+				"OPENCODE_HEADLESS",
+			),
+		) ?? false
 	);
 }
