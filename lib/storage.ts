@@ -8,24 +8,7 @@ import lockfile from "proper-lockfile";
 import type { AccountStorageV3 } from "./types.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 import { getOpencodeConfigDir as getSystemConfigDir } from "./paths.js";
-
-const PLAN_TYPE_LABELS: Record<string, string> = {
-	free: "Free",
-	plus: "Plus",
-	pro: "Pro",
-	team: "Team",
-	business: "Business",
-	enterprise: "Enterprise",
-	edu: "Edu",
-};
-
-function normalizePlanType(planType: unknown): string | undefined {
-	if (typeof planType !== "string") return undefined;
-	const trimmed = planType.trim();
-	if (!trimmed) return undefined;
-	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
-	return mapped ?? trimmed;
-}
+import { normalizePlanType } from "./plan-utils.js";
 
 type AccountRecord = AccountStorageV3["accounts"][number];
 

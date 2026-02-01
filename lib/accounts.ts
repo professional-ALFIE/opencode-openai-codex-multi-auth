@@ -14,6 +14,7 @@ import { backupAccountsFile, loadAccounts, saveAccounts, saveAccountsWithLock } 
 import { MODEL_FAMILIES, type ModelFamily } from "./prompts/codex.js";
 import { getHealthTracker, getTokenTracker, selectHybridAccount } from "./rotation.js";
 import { findAccountMatchIndex } from "./account-matching.js";
+import { normalizePlanType } from "./plan-utils.js";
 
 export type BaseQuotaKey = ModelFamily;
 export type QuotaKey = BaseQuotaKey | `${BaseQuotaKey}:${string}`;
@@ -62,25 +63,7 @@ export function sanitizeEmail(email: string | undefined): string | undefined {
 	return trimmed.toLowerCase();
 }
 
-const PLAN_TYPE_LABELS: Record<string, string> = {
-	free: "Free",
-	plus: "Plus",
-	pro: "Pro",
-	team: "Team",
-	business: "Business",
-	enterprise: "Enterprise",
-	edu: "Edu",
-};
-
 const HYDRATION_ATTEMPT_COOLDOWN_MS = 60_000;
-
-function normalizePlanType(planType: unknown): string | undefined {
-	if (typeof planType !== "string") return undefined;
-	const trimmed = planType.trim();
-	if (!trimmed) return undefined;
-	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
-	return mapped ?? trimmed;
-}
 
 export function extractAccountPlan(token?: string): string | undefined {
 	if (!token) return undefined;

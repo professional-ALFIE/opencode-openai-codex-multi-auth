@@ -4,6 +4,7 @@ import { randomBytes, createHash } from "node:crypto";
 import lockfile from "proper-lockfile";
 import { type AccountRecordV3, type CodexWhamUsageResponse } from "./types.js";
 import { getCachePath } from "./storage.js";
+import { normalizePlanTypeOrDefault } from "./plan-utils.js";
 
 export interface CodexRateLimitSnapshot {
 	accountId: string;
@@ -34,23 +35,6 @@ const SNAPSHOTS_FILE = "codex-snapshots.json";
 const WHAM_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_USAGE_URL = "https://api.openai.com/api/codex/usage";
 
-function normalizePlanType(planType: unknown): string {
-	const PLAN_TYPE_LABELS: Record<string, string> = {
-		free: "Free",
-		plus: "Plus",
-		pro: "Pro",
-		team: "Team",
-		business: "Business",
-		enterprise: "Enterprise",
-		edu: "Edu",
-	};
-	if (typeof planType !== "string") return "Free";
-	const trimmed = planType.trim();
-	if (!trimmed) return "Free";
-	const mapped = PLAN_TYPE_LABELS[trimmed.toLowerCase()];
-	return mapped ?? trimmed;
-}
-
 const LOCK_OPTIONS = {
 	stale: 10_000,
 	retries: {
@@ -75,7 +59,7 @@ export class CodexStatusManager {
 	private getSnapshotKey(account: Partial<AccountRecordV3>): string {
 		let key: string;
 		if (account.accountId && account.email && account.plan) {
-			const plan = normalizePlanType(account.plan);
+			const plan = normalizePlanTypeOrDefault(account.plan);
 			key = `${account.accountId}|${account.email.toLowerCase()}|${plan}`;
 		} else if (account.refreshToken) {
 			// Hash the refresh token to use as a stable, secure key for legacy accounts
