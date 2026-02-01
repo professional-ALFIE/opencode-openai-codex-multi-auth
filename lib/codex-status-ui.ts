@@ -1,6 +1,57 @@
 import { type ManagedAccount } from "./accounts.js";
 import { type CodexRateLimitSnapshot } from "./codex-status.js";
 
+// Box-drawing characters
+const BOX = {
+	topLeft: "┌",
+	topRight: "┐",
+	bottomLeft: "└",
+	bottomRight: "┘",
+	horizontal: "─",
+	vertical: "│",
+	midLeft: "├",
+	midRight: "┤",
+	midTop: "┬",
+	midBottom: "┴",
+	cross: "┼",
+};
+
+// Column widths (content width, excluding borders)
+const W = {
+	num: 4,        // " 1 " or "10 "
+	status: 12,    // "● DISABLED  "
+	account: 63,   // Email row OR progress bar row
+	plan: 10,      // "Plus" or "Pro" with padding
+};
+
+function hLine(left: string, mid: string, right: string): string {
+	return (
+		left +
+		BOX.horizontal.repeat(W.num) +
+		mid +
+		BOX.horizontal.repeat(W.status) +
+		mid +
+		BOX.horizontal.repeat(W.account) +
+		mid +
+		BOX.horizontal.repeat(W.plan) +
+		right
+	);
+}
+
+function row(num: string, status: string, account: string, plan: string): string {
+	return (
+		BOX.vertical +
+		num.padEnd(W.num) +
+		BOX.vertical +
+		status.padEnd(W.status) +
+		BOX.vertical +
+		account.padEnd(W.account) +
+		BOX.vertical +
+		plan.padEnd(W.plan) +
+		BOX.vertical
+	);
+}
+
 function formatResetTime(resetAt: number): string {
 	if (resetAt <= 0) return "";
 	const resetDate = new Date(resetAt);
@@ -11,9 +62,9 @@ function formatResetTime(resetAt: number): string {
 	if (isMoreThan24h) {
 		const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 		const dateStr = `${resetDate.getDate()} ${monthNames[resetDate.getMonth()]}`;
-		return `(resets ${timeStr} on ${dateStr})`;
+		return `(${timeStr} ${dateStr})`;
 	} else {
-		return `(resets ${timeStr})`;
+		return `(${timeStr})`;
 	}
 }
 
@@ -25,12 +76,6 @@ export function renderObsidianDashboard(
 	const now = Date.now();
 	const lines: string[] = [];
 
-	// Column Widths & Grid
-	const W_NUM = 6;
-	const W_STATUS = 14;
-	const W_EMAIL = 42;
-	const GAP = "   "; // Equal 3-space gap between all columns
-
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
 		return snapshots.find(
@@ -41,26 +86,14 @@ export function renderObsidianDashboard(
 		);
 	};
 
-	// Header
-	const hRow =
-		`  #`.padEnd(W_NUM) +
-		GAP +
-		`  STATUS`.padEnd(W_STATUS) + 
-		GAP +
-		`ACCOUNT`.padEnd(W_EMAIL) +
-		GAP +
-		`PLAN`;
-	lines.push(hRow);
+	// Top border
+	lines.push(hLine(BOX.topLeft, BOX.midTop, BOX.topRight));
 
-	const divider =
-		`  --`.padEnd(W_NUM) +
-		GAP +
-		`  --------`.padEnd(W_STATUS) + 
-		GAP +
-		"-".repeat(W_EMAIL).padEnd(W_EMAIL) +
-		GAP +
-		"-".repeat(50); // Extended underline for PLAN + Usage
-	lines.push(divider);
+	// Header row
+	lines.push(row(" #", " STATUS", " ACCOUNT", " PLAN"));
+
+	// Header separator
+	lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight));
 
 	accounts.forEach((acc, i) => {
 		const isActive = i === activeIndex;
@@ -70,64 +103,65 @@ export function renderObsidianDashboard(
 			acc.coolingDownUntil > now &&
 			acc.cooldownReason === "auth-failure";
 
-		let statusLabel = "";
+		// Status with indicator
+		let statusLabel: string;
+		let statusIndicator: string;
 		if (!isEnabled) {
+			statusIndicator = "○";
 			statusLabel = "DISABLED";
 		} else if (isAuthFailed) {
+			statusIndicator = "✕";
 			statusLabel = "AUTH ERR";
 		} else if (isActive) {
+			statusIndicator = "●";
 			statusLabel = "ACTIVE";
 		} else {
-			statusLabel = "ENABLED";
+			statusIndicator = "○";
+			statusLabel = "READY";
 		}
 
-		const num = `  ${i + 1}`.padEnd(W_NUM);
-		const status = `  ${statusLabel}`.padEnd(W_STATUS);
-		const email = (acc.email || "unknown").padEnd(W_EMAIL);
-		const plan = acc.plan || "Free";
+		const statusStr = ` ${statusIndicator} ${statusLabel}`;
+		const emailStr = ` ${acc.email || "unknown"}`;
+		const planStr = ` ${acc.plan || "Free"}`;
 
-		// Main Row
-		const mainRowContent =
-			num + 
-			GAP + 
-			status + 
-			GAP +
-			email + 
-			GAP +
-			plan;
-		lines.push(mainRowContent);
+		// Main row with email
+		lines.push(row(` ${i + 1}`, statusStr, emailStr, planStr));
 
-		// Snapshot Data
+		// Snapshot data rows
 		const snapshot = findSnapshot(acc);
-		// Indent to match ACCOUNT column (W_NUM + GAP.length + W_STATUS + GAP.length) = 26
-		const indent = " ".repeat(W_NUM + GAP.length + W_STATUS + GAP.length); 
 
-		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined) => {
+		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined): string => {
 			const barWidth = 20;
 			const usedPercent = data?.usedPercent ?? 0;
 			const p = Math.max(0, 100 - usedPercent);
 			const filled = Math.round((p / 100) * barWidth);
 			const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 			const leftStr = `${String(p).padStart(3)}% left`;
-			const resetStr = data?.resetAt ? formatResetTime(data.resetAt) : "";
-
-			return `${label.padEnd(10)}[${bar}] ${leftStr}${resetStr ? ` ${resetStr}` : ""}`;
+			const resetStr = data?.resetAt ? ` ${formatResetTime(data.resetAt)}` : "";
+			return ` ${label.padEnd(10)} [${bar}] ${leftStr}${resetStr}`;
 		};
 
-		// Bar Rows
-		lines.push(indent + renderBar("5h Limit", snapshot?.primary));
-		lines.push(indent + renderBar("Weekly", snapshot?.secondary));
+		// Progress bar rows
+		lines.push(row("", "", renderBar("5h Limit", snapshot?.primary), ""));
+		lines.push(row("", "", renderBar("Weekly", snapshot?.secondary), ""));
 
-		// Credits Row
+		// Credits row
 		const creditInfo = snapshot?.credits;
-		const creditStr = creditInfo ? (creditInfo.unlimited ? "unlimited" : `${creditInfo.balance} credits`) : "0 credits";
-		const creditRow = `${indent}${"Credits".padEnd(10)}${creditStr}`;
-		lines.push(creditRow);
+		const creditStr = creditInfo
+			? creditInfo.unlimited
+				? "unlimited"
+				: `${creditInfo.balance} credits`
+			: "0 credits";
+		lines.push(row("", "", ` ${"Credits".padEnd(10)} ${creditStr}`, ""));
 
+		// Row separator or bottom border
 		if (i < accounts.length - 1) {
-			lines.push("");
+			lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight));
 		}
 	});
+
+	// Bottom border
+	lines.push(hLine(BOX.bottomLeft, BOX.midBottom, BOX.bottomRight));
 
 	return lines;
 }
