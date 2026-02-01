@@ -55,6 +55,7 @@ const DEFAULT_CONFIG: PluginConfig = {
 	retryAllAccountsMaxWaitMs: 30_000,
 	retryAllAccountsMaxRetries: 1,
 	tokenRefreshSkewMs: 60_000,
+	proactiveTokenRefresh: false,
 	rateLimitToastDebounceMs: 60_000,
 	schedulingMode: "cache_first",
 	maxCacheFirstWaitSeconds: 60,
@@ -285,5 +286,13 @@ export function getRequestJitterMaxMs(pluginConfig: PluginConfig): number {
 		pluginConfig.requestJitterMaxMs,
 		1000,
 		{ min: 0 },
+	);
+}
+
+export function getProactiveTokenRefresh(pluginConfig: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		"CODEX_AUTH_PROACTIVE_TOKEN_REFRESH",
+		pluginConfig.proactiveTokenRefresh,
+		false,
 	);
 }
