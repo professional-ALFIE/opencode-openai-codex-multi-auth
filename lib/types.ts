@@ -48,6 +48,13 @@ export interface PluginConfig {
 	tokenRefreshSkewMs?: number;
 
 	/**
+	 * Enable proactive token refresh before expiry.
+	 * When enabled, tokens are refreshed in the background before they expire.
+	 * @default false
+	 */
+	proactiveTokenRefresh?: boolean;
+
+	/**
 	 * Debounce interval for account-related toasts.
 	 * @default 60000
 	 */
