@@ -17,14 +17,27 @@ const BOX = {
 };
 
 // Column widths (content width, excluding borders)
-const W = {
-	num: 4,        // " 1 " or "10 "
-	status: 12,    // "● DISABLED  "
-	account: 63,   // Email row OR progress bar row
-	plan: 10,      // "Plus" or "Pro" with padding
-};
+function getColumnWidths() {
+	const termWidth = process.stdout.columns || 100;
+	
+	// Minimum widths for functional columns
+	const numWidth = 4;
+	const statusWidth = 12;
+	const planWidth = 10;
+	
+	// Account column takes remaining space, but at least 40 and at most 63
+	const accountWidth = Math.max(40, Math.min(63, termWidth - numWidth - statusWidth - planWidth - 5));
+	
+	return {
+		num: numWidth,
+		status: statusWidth,
+		account: accountWidth,
+		plan: planWidth,
+		total: numWidth + statusWidth + accountWidth + planWidth + 5
+	};
+}
 
-function hLine(left: string, mid: string, right: string): string {
+function hLine(left: string, mid: string, right: string, W: ReturnType<typeof getColumnWidths>): string {
 	return (
 		left +
 		BOX.horizontal.repeat(W.num) +
@@ -38,7 +51,7 @@ function hLine(left: string, mid: string, right: string): string {
 	);
 }
 
-function row(num: string, status: string, account: string, plan: string): string {
+function row(num: string, status: string, account: string, plan: string, W: ReturnType<typeof getColumnWidths>): string {
 	return (
 		BOX.vertical +
 		num.padEnd(W.num) +
@@ -75,6 +88,7 @@ export function renderObsidianDashboard(
 ): string[] {
 	const now = Date.now();
 	const lines: string[] = [];
+	const W = getColumnWidths();
 
 	// Helper to find snapshot
 	const findSnapshot = (acc: ManagedAccount) => {
@@ -87,13 +101,13 @@ export function renderObsidianDashboard(
 	};
 
 	// Top border
-	lines.push(hLine(BOX.topLeft, BOX.midTop, BOX.topRight));
+	lines.push(hLine(BOX.topLeft, BOX.midTop, BOX.topRight, W));
 
 	// Header row
-	lines.push(row(" #", " STATUS", " ACCOUNT", " PLAN"));
+	lines.push(row(" #", " STATUS", " ACCOUNT", " PLAN", W));
 
 	// Header separator
-	lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight));
+	lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight, W));
 
 	accounts.forEach((acc, i) => {
 		const isActive = i === activeIndex;
@@ -125,25 +139,30 @@ export function renderObsidianDashboard(
 		const planStr = ` ${acc.plan || "Free"}`;
 
 		// Main row with email
-		lines.push(row(` ${i + 1}`, statusStr, emailStr, planStr));
+		lines.push(row(` ${i + 1}`, statusStr, emailStr, planStr, W));
 
 		// Snapshot data rows
 		const snapshot = findSnapshot(acc);
 
 		const renderBar = (label: string, data: { usedPercent: number; resetAt: number } | null | undefined): string => {
-			const barWidth = 20;
 			const usedPercent = data?.usedPercent ?? 0;
 			const p = Math.max(0, 100 - usedPercent);
-			const filled = Math.round((p / 100) * barWidth);
-			const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 			const leftStr = `${String(p).padStart(3)}% left`;
 			const resetStr = data?.resetAt ? ` ${formatResetTime(data.resetAt)}` : "";
+			
+			// Dynamically adjust bar width based on available space in account column
+			// accountWidth - label(11) - brackets(2) - space(1) - leftStr(9) - resetStr(varies)
+			const reservedWidth = 11 + 2 + 1 + 9 + resetStr.length + 1;
+			const barWidth = Math.max(5, W.account - reservedWidth);
+			
+			const filled = Math.round((p / 100) * barWidth);
+			const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 			return ` ${label.padEnd(10)} [${bar}] ${leftStr}${resetStr}`;
 		};
 
 		// Progress bar rows
-		lines.push(row("", "", renderBar("5h Limit", snapshot?.primary), ""));
-		lines.push(row("", "", renderBar("Weekly", snapshot?.secondary), ""));
+		lines.push(row("", "", renderBar("5h Limit", snapshot?.primary), "", W));
+		lines.push(row("", "", renderBar("Weekly", snapshot?.secondary), "", W));
 
 		// Credits row
 		const creditInfo = snapshot?.credits;
@@ -152,16 +171,16 @@ export function renderObsidianDashboard(
 				? "unlimited"
 				: `${creditInfo.balance} credits`
 			: "0 credits";
-		lines.push(row("", "", ` ${"Credits".padEnd(10)} ${creditStr}`, ""));
+		lines.push(row("", "", ` ${"Credits".padEnd(10)} ${creditStr}`, "", W));
 
 		// Row separator or bottom border
 		if (i < accounts.length - 1) {
-			lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight));
+			lines.push(hLine(BOX.midLeft, BOX.cross, BOX.midRight, W));
 		}
 	});
 
 	// Bottom border
-	lines.push(hLine(BOX.bottomLeft, BOX.midBottom, BOX.bottomRight));
+	lines.push(hLine(BOX.bottomLeft, BOX.midBottom, BOX.bottomRight, W));
 
 	return lines;
 }

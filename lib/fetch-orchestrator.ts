@@ -53,14 +53,7 @@ import { replaceAccountsFile, quarantineAccounts } from "./storage.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
-const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
 const MAX_SSE_BUFFER_SIZE = 5 * 1024 * 1024;
-
-const debugAuth = (...args: unknown[]): void => {
-	if (!AUTH_DEBUG_ENABLED) return;
-	console.debug(...args);
-};
-
 
 function shouldRefreshToken(auth: OAuthAuthDetails, skewMs: number): boolean {
 	return !auth.access || auth.expires <= Date.now() + Math.max(0, Math.floor(skewMs));
@@ -97,6 +90,11 @@ export interface FetchOrchestratorConfig {
 
 export class FetchOrchestrator {
 	constructor(private config: FetchOrchestratorConfig) { }
+
+	private debugAuth(...args: unknown[]): void {
+		if (!getAuthDebugEnabled(this.config.pluginConfig)) return;
+		console.debug(...args);
+	}
 
 	async execute(input: Request | string | URL, init?: RequestInit): Promise<Response> {
 		const {
@@ -279,6 +277,21 @@ export class FetchOrchestrator {
 								throw new Error("Request timed out during account rotation");
 							}
 							if (tokenConsumed) tokenTracker.refund(account);
+							
+							// Handle network errors (ECONNREFUSED, DNS, etc.) by rotating to next account
+							const error = err as Error;
+							const isNetworkError = 
+								error.name === "TypeError" || // native fetch throws TypeError for network errors
+								error.message.includes("fetch failed") ||
+								error.message.includes("network") ||
+								error.message.includes("DNS");
+							
+							if (isNetworkError) {
+								logWarn(`Network error for account ${account.email}: ${error.message}. Rotating...`);
+								if (getAccountSelectionStrategy(pluginConfig) === "hybrid") healthTracker.recordFailure(account);
+								break; // Break inner loop to try next account
+							}
+							
 							if (getAccountSelectionStrategy(pluginConfig) === "hybrid") healthTracker.recordFailure(account);
 							throw err;
 						}
@@ -291,7 +304,7 @@ export class FetchOrchestrator {
 
 						// Handle Unauthorized (401) - potentially a stale token due to parallel rotation
 						if (res.status === HTTP_STATUS.UNAUTHORIZED) {
-							debugAuth(`[Fetch] 401 Unauthorized for ${account.email}. Attempting recovery...`);
+							this.debugAuth(`[Fetch] 401 Unauthorized for ${account.email}. Attempting recovery...`);
 							const recovery = await runRefresh();
 							if (recovery.type === "success") {
 								// Update headers with new token and retry the loop

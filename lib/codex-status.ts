@@ -5,6 +5,7 @@ import lockfile from "proper-lockfile";
 import { type AccountRecordV3, type CodexWhamUsageResponse } from "./types.js";
 import { getCachePath } from "./storage.js";
 import { normalizePlanTypeOrDefault } from "./plan-utils.js";
+import { getAuthDebugEnabled } from "./config.js";
 
 export interface CodexRateLimitSnapshot {
 	accountId: string;
@@ -68,7 +69,7 @@ export class CodexStatusManager {
 			key = "unknown";
 		}
 
-		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+		if (getAuthDebugEnabled()) {
 			console.log(`[CodexStatus] Generated key: ${key}`);
 		}
 		return key;
@@ -78,7 +79,7 @@ export class CodexStatusManager {
 		account: AccountRecordV3,
 		headers: Record<string, string | string[] | undefined>,
 	): Promise<void> {
-		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+		if (getAuthDebugEnabled()) {
 			console.log(`[CodexStatus] Updating from headers for ${account.email}:`, JSON.stringify(headers));
 		}
 		await this.ensureInitialized();
@@ -237,7 +238,7 @@ export class CodexStatusManager {
 		}
 
 
-		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+		if (getAuthDebugEnabled()) {
 			const updateTime = new Date(snapshot.updatedAt);
 			lines.push(`  Updated  ${updateTime.getHours()}:${String(updateTime.getMinutes()).padStart(2, "0")}:${String(updateTime.getSeconds()).padStart(2, "0")}`);
 		}
@@ -247,7 +248,7 @@ export class CodexStatusManager {
 
 	private async loadFromDisk(): Promise<void> {
 		const path = getCachePath(SNAPSHOTS_FILE);
-		if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+		if (getAuthDebugEnabled()) {
 			console.log(`[CodexStatus] Loading snapshots from ${path}`);
 		}
 		if (!existsSync(path)) return;
@@ -318,7 +319,7 @@ export class CodexStatusManager {
 			}
 		} catch (error) {
 			// ignore save errors but log if debug
-			if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			if (getAuthDebugEnabled()) {
 				console.error("[CodexStatus] Failed to save snapshots:", error);
 			}
 		}
@@ -416,11 +417,11 @@ export class CodexStatusManager {
 				}
 
 				await this.updateFromSnapshot(account, data);
-			} else if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			} else if (getAuthDebugEnabled()) {
 				console.log(`[CodexStatus] Backend returned ${res.status} for ${account.email}, using cached snapshot`);
 			}
 		} catch (err) {
-			if (process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1") {
+			if (getAuthDebugEnabled()) {
 				console.error(`[CodexStatus] Fetch failed for ${account.email}:`, err);
 			}
 		}

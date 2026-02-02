@@ -1,6 +1,7 @@
 import { stdin as input, stdout as output } from "node:process";
+import { getAuthDebugEnabled } from "./config.js";
 
-const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
+const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
 
 function debug(...args: unknown[]): void {
 	if (!AUTH_DEBUG_ENABLED) return;

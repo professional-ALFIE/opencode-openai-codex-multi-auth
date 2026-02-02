@@ -9,13 +9,14 @@ import type { AccountStorageV3 } from "./types.js";
 import { findAccountMatchIndex } from "./account-matching.js";
 import { getOpencodeConfigDir as getSystemConfigDir } from "./paths.js";
 import { normalizePlanType } from "./plan-utils.js";
+import { getAuthDebugEnabled } from "./config.js";
 
 type AccountRecord = AccountStorageV3["accounts"][number];
 
 type RateLimitState = Record<string, number | undefined>;
 
 const STORAGE_FILE = "openai-codex-accounts.json";
-const AUTH_DEBUG_ENABLED = process.env.OPENCODE_OPENAI_AUTH_DEBUG === "1";
+const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
 const MAX_QUARANTINE_FILES = 20;
 const MAX_BACKUP_FILES = 20;
 

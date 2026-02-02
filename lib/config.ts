@@ -56,6 +56,7 @@ const DEFAULT_CONFIG: PluginConfig = {
 	retryAllAccountsMaxRetries: 1,
 	tokenRefreshSkewMs: 60_000,
 	proactiveTokenRefresh: false,
+	authDebug: false,
 	rateLimitToastDebounceMs: 60_000,
 	schedulingMode: "cache_first",
 	maxCacheFirstWaitSeconds: 60,
@@ -311,15 +312,11 @@ export function getProactiveTokenRefresh(pluginConfig: PluginConfig): boolean {
 	);
 }
 
-export function getAuthDebugEnabled(): boolean {
-	return (
-		parseBooleanEnv(
-			getEnvWithAlias(
-				"CODEX_AUTH_DEBUG",
-				"OPENCODE_OPENAI_AUTH_DEBUG",
-				"DEBUG_CODEX_PLUGIN",
-			),
-		) ?? false
+export function getAuthDebugEnabled(pluginConfig?: PluginConfig): boolean {
+	return resolveBooleanSetting(
+		["CODEX_AUTH_DEBUG", "OPENCODE_OPENAI_AUTH_DEBUG", "DEBUG_CODEX_PLUGIN"],
+		pluginConfig?.authDebug,
+		false,
 	);
 }
 

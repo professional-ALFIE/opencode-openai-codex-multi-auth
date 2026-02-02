@@ -55,6 +55,12 @@ export interface PluginConfig {
 	proactiveTokenRefresh?: boolean;
 
 	/**
+	 * Enable detailed authentication debug logging.
+	 * @default false
+	 */
+	authDebug?: boolean;
+
+	/**
 	 * Debounce interval for account-related toasts.
 	 * @default 60000
 	 */
