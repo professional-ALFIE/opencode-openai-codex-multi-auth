@@ -1,6 +1,5 @@
 /**
  * OpenAI ChatGPT (Codex) OAuth Plugin
- * @license MIT
  */
 
 import { tool, type Plugin, type PluginInput } from "@opencode-ai/plugin";
@@ -93,6 +92,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		try {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
 		} catch (err) {
+			// Toast failures should not crash the plugin; log to debug output.
 			if (!quietMode) console.error("[Toast Error]", err);
 		}
 	};
@@ -121,8 +121,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const stored = await loadAccounts();
 		const accounts = stored?.accounts ? [...stored.accounts] : [];
 		const accountId = extractAccountId(token.access);
+		
+		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
 		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
 		const plan = extractAccountPlan(token.idToken ?? token.access);
+		
 		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
 
 		if (existingIndex === -1) {
@@ -173,7 +176,11 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 				const proactiveRefreshEnabled = getProactiveTokenRefresh(pluginConfig);
 
 				const proactiveRefreshQueue = proactiveRefreshEnabled
-					? new ProactiveRefreshQueue({ bufferMs: tokenRefreshSkewMs, intervalMs: 250 })
+					? new ProactiveRefreshQueue({ 
+							bufferMs: tokenRefreshSkewMs, 
+							// Short interval to process the queue quickly without overwhelming the event loop.
+							intervalMs: 250 
+						})
 					: null;
 
 				if (proactiveRefreshScheduler) proactiveRefreshScheduler.stop();
@@ -319,7 +326,6 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 			async execute() {
 				configureStorageForCurrentCwd();
 				const accountManager = await AccountManager.loadFromDisk();
-				// Read-only status.
 				const accounts = accountManager.getAccountsSnapshot();
 				const { scope, storagePath } = getStorageScope();
 				if (accounts.length === 0) return [`OpenAI Codex Status`, ``, `  Scope: ${scope}`, `  Accounts: 0`, ``, `Add accounts:`, `  opencode auth login`, ``, `Storage: ${storagePath}`].join("\n");
