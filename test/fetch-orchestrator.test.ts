@@ -220,32 +220,44 @@ describe('FetchOrchestrator', () => {
 		expect(body.error.message).toContain('All 2 account(s) unavailable');
 	});
 
-	it('should timeout if execution takes too long', async () => {
-		vi.useRealTimers();
-		// Set a short timeout
-		(config as any).requestTimeoutMs = 100;
-		orchestrator = new FetchOrchestrator(config);
-
+	it('should not loop infinitely on persistent 401', async () => {
 		accountManager.getAccountCount.mockReturnValue(1);
 		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
-		accountManager.toAuthDetails.mockReturnValue({
-			access: 'valid-token',
-			expires: Date.now() + 100000,
+		accountManager.toAuthDetails.mockReturnValue({ access: 'bad-token', expires: Date.now() + 100000 });
+
+		// Use mockImplementation to return a NEW Response each time
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('Unauthorized', { status: 401 })));
+		// Refresh always succeeds
+		accountManager.refreshAccountWithFallback.mockResolvedValue({
+			type: 'success',
+			access: 'new-token',
+			refresh: 'new-refresh',
+			expires: Date.now() + 3600000,
 		});
 
-		// mockFetch returns a promise that rejects when aborted
-		mockFetch.mockImplementation((_url, options) => {
-			const signal = options?.signal;
-			return new Promise((_, reject) => {
-				if (signal?.aborted) return reject(new Error('Aborted'));
-				signal?.addEventListener('abort', () => {
-					reject(new Error('Aborted'));
-				}, { once: true });
-			});
-		});
+		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
 
-		const executePromise = orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+		expect(response.status).toBe(429); // Fails after retry limit
+		expect(mockFetch).toHaveBeenCalledTimes(2); // Initial + 1 retry
+		expect(accountManager.markAccountCoolingDown).toHaveBeenCalled();
+	});
 
-		await expect(executePromise).rejects.toThrow('Request timed out during account rotation');
+	it('should handle non-JSON or non-string bodies gracefully', async () => {
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.toAuthDetails.mockReturnValue({ access: 'token', expires: Date.now() + 100000 });
+		mockFetch.mockImplementation(() => Promise.resolve(new Response('{}', { status: 200 })));
+
+		// Test with non-JSON string
+		await expect(orchestrator.execute('https://api.openai.com/v1/chat/completions', { 
+			method: 'POST', 
+			body: 'not-json' 
+		})).resolves.toBeDefined();
+
+		// Test with non-string body
+		await expect(orchestrator.execute('https://api.openai.com/v1/chat/completions', { 
+			method: 'POST', 
+			body: { some: 'object' } as any 
+		})).resolves.toBeDefined();
 	});
 });

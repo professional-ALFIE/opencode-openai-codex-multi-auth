@@ -313,9 +313,10 @@ export function getProactiveTokenRefresh(pluginConfig: PluginConfig): boolean {
 }
 
 export function getAuthDebugEnabled(pluginConfig?: PluginConfig): boolean {
+	const config = pluginConfig ?? loadPluginConfig();
 	return resolveBooleanSetting(
 		["CODEX_AUTH_DEBUG", "OPENCODE_OPENAI_AUTH_DEBUG", "DEBUG_CODEX_PLUGIN"],
-		pluginConfig?.authDebug,
+		config.authDebug,
 		false,
 	);
 }
