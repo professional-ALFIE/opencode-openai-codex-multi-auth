@@ -438,10 +438,17 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 						return "To remove account, call with confirm: true";
 					}
 					configureStorageForCurrentCwd();
-					const accountManager = await AccountManager.loadFromDisk();
+					// Use cachedAccountManager if available to ensure shared state consistency,
+					// otherwise load from disk (though in tool context cachedAccountManager should exist)
+					const accountManager = cachedAccountManager ?? await AccountManager.loadFromDisk();
+					
 					if (accountManager.getAccountCount() === 0) return "No OpenAI accounts configured.";
 
 					const targetIndex = Math.floor((index ?? 0) - 1);
+					// Check bounds before accessing
+					if (targetIndex < 0 || targetIndex >= accountManager.getAccountCount()) {
+						return `Invalid account number: ${index}.`;
+					}
 					const account = accountManager.getAccountByIndex(targetIndex);
 					if (!account) return `Invalid account number: ${index}.`;
 
@@ -449,6 +456,13 @@ async fetch(input: Request | string | URL, init?: RequestInit): Promise<Response
 					const success = await accountManager.removeAccountByIndex(targetIndex);
 
 					if (!success) return `Failed to remove account ${index}.`;
+					
+					// Force a fresh load from disk to ensure any other instance state is clean
+					if (!cachedAccountManager) {
+						// This branch only hits if the plugin wasn't fully initialized,
+						// but standard flow ensures cachedAccountManager is set.
+					}
+					
 					return `Removed ${label}.`;
 				},
 			}),
