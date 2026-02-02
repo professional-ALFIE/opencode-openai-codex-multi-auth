@@ -219,4 +219,33 @@ describe('FetchOrchestrator', () => {
 		const body = await response.json();
 		expect(body.error.message).toContain('All 2 account(s) unavailable');
 	});
+
+	it('should timeout if execution takes too long', async () => {
+		vi.useRealTimers();
+		// Set a short timeout
+		(config as any).requestTimeoutMs = 100;
+		orchestrator = new FetchOrchestrator(config);
+
+		accountManager.getAccountCount.mockReturnValue(1);
+		accountManager.getCurrentOrNextForFamily.mockReturnValue({ index: 0, accountId: 'acc1', email: 'test@example.com' });
+		accountManager.toAuthDetails.mockReturnValue({
+			access: 'valid-token',
+			expires: Date.now() + 100000,
+		});
+
+		// mockFetch returns a promise that rejects when aborted
+		mockFetch.mockImplementation((_url, options) => {
+			const signal = options?.signal;
+			return new Promise((_, reject) => {
+				if (signal?.aborted) return reject(new Error('Aborted'));
+				signal?.addEventListener('abort', () => {
+					reject(new Error('Aborted'));
+				}, { once: true });
+			});
+		});
+
+		const executePromise = orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
+
+		await expect(executePromise).rejects.toThrow('Request timed out during account rotation');
+	});
 });
