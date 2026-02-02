@@ -28,6 +28,7 @@ import {
 	getCodexMode,
 	getMaxCacheFirstWaitSeconds,
 	getRateLimitDedupWindowMs,
+	getRateLimitToastDebounceMs,
 	getRequestJitterMaxMs,
 	getRetryAllAccountsMaxRetries,
 	getRetryAllAccountsMaxWaitMs,
@@ -324,7 +325,7 @@ export class FetchOrchestrator {
 						continue;
 					}
 					accountManager.markSwitched(account, "rate-limit", modelFamily);
-					if (accountManager.shouldShowAccountToast(account.index, getRateLimitDedupWindowMs(pluginConfig))) {
+					if (accountManager.shouldShowAccountToast(account.index, getRateLimitToastDebounceMs(pluginConfig))) {
 						accountManager.markToastShown(account.index);
 						void showToast(`Rate limited - switching account`, "warning", false);
 					}

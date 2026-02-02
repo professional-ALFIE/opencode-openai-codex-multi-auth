@@ -919,7 +919,9 @@ export class AccountManager {
 							a.plan === accountToRemove.plan
 						);
 					}
-					return a.refreshToken !== accountToRemove.refreshToken;
+					// Use originalRefreshToken to match against disk state if available (handles pending rotation)
+					const token = accountToRemove.originalRefreshToken || accountToRemove.refreshToken;
+					return a.refreshToken !== token;
 				});
 			}
 
