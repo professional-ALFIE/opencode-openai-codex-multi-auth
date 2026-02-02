@@ -31,8 +31,14 @@ export class ProactiveRefreshQueue {
 		this.now = options.now ?? (() => Date.now());
 	}
 
-	enqueue(task: RefreshQueueTask): Promise<RefreshQueueResult> {
-		const now = this.now();
+	async enqueue(task: RefreshQueueTask): Promise<RefreshQueueResult> {
+		let now = Date.now();
+		try {
+			now = this.now();
+		} catch {
+			now = Date.now();
+		}
+
 		if (!Number.isFinite(task.expires) || task.expires <= now) {
 			return Promise.resolve({ type: "skipped" });
 		}
@@ -46,32 +52,53 @@ export class ProactiveRefreshQueue {
 		return new Promise((resolve) => {
 			this.pendingKeys.add(task.key);
 			this.queue.push({ task, resolve });
-			this.process();
+			if (!this.running) {
+				void this.process();
+			}
 		});
 	}
 
 	private async process(): Promise<void> {
 		if (this.running) return;
 		this.running = true;
-		while (this.queue.length > 0) {
-			const item = this.queue.shift();
-			if (!item) continue;
-			const now = this.now();
-			let result: RefreshQueueResult = { type: "skipped" };
-			if (item.task.expires > now && item.task.expires - now <= this.bufferMs) {
+		try {
+			while (this.queue.length > 0) {
+				const item = this.queue.shift();
+				if (!item) continue;
+				let now = Date.now();
+				let result: RefreshQueueResult = { type: "skipped" };
 				try {
-					result = await item.task.refresh();
+					try {
+						now = this.now();
+					} catch {
+						now = Date.now();
+					}
+
+					if (item.task.expires > now && item.task.expires - now <= this.bufferMs) {
+						try {
+							result = await item.task.refresh();
+						} catch {
+							result = { type: "failed" };
+						}
+					}
 				} catch {
 					result = { type: "failed" };
+				} finally {
+					this.pendingKeys.delete(item.task.key);
+					// Ensure resolve is called even if errors occurred
+					try {
+						item.resolve(result);
+					} catch {
+						// ignore errors during resolve (e.g. if promise already settled)
+					}
+				}
+				if (this.intervalMs > 0 && this.queue.length > 0) {
+					await new Promise((resolve) => setTimeout(resolve, this.intervalMs));
 				}
 			}
-			item.resolve(result);
-			this.pendingKeys.delete(item.task.key);
-			if (this.intervalMs > 0 && this.queue.length > 0) {
-				await new Promise((resolve) => setTimeout(resolve, this.intervalMs));
-			}
+		} finally {
+			this.running = false;
 		}
-		this.running = false;
 	}
 }
 
