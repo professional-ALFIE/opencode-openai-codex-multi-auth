@@ -114,10 +114,9 @@ export class FetchOrchestrator {
 
 		const originalUrl = extractRequestUrl(input);
 		const url = rewriteUrlForCodex(originalUrl);
-		const originalBody = init?.body ? JSON.parse(init.body as string) : {};
-		const isStreaming = originalBody.stream === true;
 		const transformation = await transformRequestForCodex(init, url, userConfig, getCodexMode(pluginConfig));
 		const requestInit = transformation?.updatedInit ?? init;
+		const isStreaming = transformation?.body.stream === true;
 		const model = transformation?.body.model;
 		const modelFamily: ModelFamily = model ? getModelFamily(model) : "gpt-5.1";
 		const usePidOffset = pidOffsetEnabled && accountManager.getAccountCount() > 1;
