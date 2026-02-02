@@ -276,7 +276,7 @@ export class FetchOrchestrator {
 						return await handleSuccessResponse(res, isStreaming);
 					}
 
-					// Handle Unauthorized (401) - potentially a stale token due to parallel rotation
+					// Handle Unauthorized (401)
 					if (res.status === HTTP_STATUS.UNAUTHORIZED) {
 						debugAuth(`[Fetch] 401 Unauthorized for ${account.email}. Attempting recovery...`);
 
@@ -286,10 +286,8 @@ export class FetchOrchestrator {
 							authRetries.set(accountKey, retryCount + 1);
 							const recovery = await runRefresh();
 							if (recovery.type === "success") {
-								// Update headers with new token and retry the loop
 								accountAuth = { type: "oauth", access: recovery.access, refresh: recovery.refresh, expires: recovery.expires };
 								const newHeaders = createCodexHeaders(requestInit, accountId, accountAuth.access, { model, promptCacheKey: transformation?.body?.prompt_cache_key });
-								// Update headers for the retry
 								newHeaders.forEach((v, k) => headers.set(k, v));
 								continue;
 							}
@@ -297,7 +295,6 @@ export class FetchOrchestrator {
 							logWarn(`[Fetch] 401 Unauthorized retry limit reached for ${account.email}`);
 						}
 
-						// If refresh/reload failed or retry limit reached, mark as cooling down and try next account
 						accountManager.markAccountCoolingDown(account, AUTH_FAILURE_COOLDOWN_MS, "auth-failure");
 						await accountManager.saveToDisk();
 						break;
