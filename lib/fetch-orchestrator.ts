@@ -54,6 +54,7 @@ import { logDebug, logWarn } from "./logger.js";
 import { replaceAccountsFile, quarantineAccounts } from "./storage.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
+// Cooldown prevents spamming authentication requests for accounts with persistent failures.
 const AUTH_FAILURE_COOLDOWN_MS = 60_000;
 
 const debugAuth = (...args: unknown[]): void => {
@@ -126,7 +127,10 @@ export class FetchOrchestrator {
 		}
 
 		const isStreaming = originalBody.stream === true;
+		
+		// Map the request to a specific Codex model behavior based on plugin configuration.
 		const transformation = await transformRequestForCodex(init, url, userConfig, getCodexMode(pluginConfig));
+		
 		const requestInit = transformation?.updatedInit ?? init;
 		const model = transformation?.body.model;
 		const modelFamily: ModelFamily = model ? getModelFamily(model) : DEFAULT_MODEL_FAMILY;
@@ -251,6 +255,7 @@ export class FetchOrchestrator {
 									sseBuffer = lines.pop() || "";
 									for (const line of lines) processLine(line);
 
+									// Memory safety: truncate buffer if it grows too large (e.g., missing newlines).
 									if (sseBuffer.length > 1024 * 1024) {
 										logWarn("[Fetch] SSE buffer exceeded 1MB. Truncating to avoid memory exhaustion.");
 										sseBuffer = sseBuffer.slice(-1024 * 512); // Keep last 512KB to preserve partial line
