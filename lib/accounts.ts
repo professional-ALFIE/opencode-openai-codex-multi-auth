@@ -542,7 +542,7 @@ export class AccountManager {
 		strategy: AccountSelectionStrategy = "sticky",
 		pidOffsetEnabled: boolean = false,
 	): ManagedAccount | null {
-		// antigravity-style: PID offset is primarily for sticky/round-robin.
+		// PID offset is primarily for sticky/round-robin.
 		if (pidOffsetEnabled && strategy !== "hybrid") this.applyPidOffsetOnce(family);
 
 		if (strategy === "hybrid") {

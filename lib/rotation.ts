@@ -327,11 +327,6 @@ export function selectHybridAccount(
 		.sort((a, b) => b.score - a.score);
 
 	const best = scored[0];
-	const current = scored.find((item) => item.isCurrent);
-	if (current && best && !best.isCurrent && best.base - current.base < SWITCH_THRESHOLD) {
-		return current.index;
-	}
-
 	return best?.index ?? null;
 }
 
