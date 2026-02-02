@@ -251,7 +251,8 @@ export class FetchOrchestrator {
 									for (const line of lines) processLine(line);
 
 									if (sseBuffer.length > 1024 * 1024) {
-										sseBuffer = "";
+										logWarn("[Fetch] SSE buffer exceeded 1MB. Truncating to avoid memory exhaustion.");
+										sseBuffer = sseBuffer.slice(-1024 * 512); // Keep last 512KB to preserve partial line
 									}
 									controller.enqueue(value);
 								},

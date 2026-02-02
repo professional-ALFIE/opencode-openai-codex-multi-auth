@@ -466,7 +466,8 @@ export class AccountManager {
 		}
 
 		const fallbackIndex = remaining.length > 0 ? 0 : -1;
-		const newCursor = indexMap.get(this.cursor) ?? Math.max(0, fallbackIndex);
+		const foundCursor = indexMap.get(this.cursor);
+		const newCursor = foundCursor !== undefined ? foundCursor : fallbackIndex;
 		const newIndexByFamily: Record<string, number> = {};
 		const newSessionOffsetApplied: Record<string, boolean> = {};
 		for (const family of MODEL_FAMILIES) {
