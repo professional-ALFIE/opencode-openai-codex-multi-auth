@@ -33,21 +33,13 @@ export function getAccountKey(account: AccountIdentity): string {
 }
 
 export interface HealthScoreConfig {
-	/** Default: 70 */
 	initial: number;
-	/** Default: 1 */
 	successReward: number;
-	/** Default: -10 */
 	rateLimitPenalty: number;
-	/** Default: -20 */
 	failurePenalty: number;
-	/** Default: 2 */
 	recoveryRatePerHour: number;
-	/** Default: 50 */
 	minUsable: number;
-	/** Default: 100 */
 	maxScore: number;
-	/** Default: 24h */
 	staleAfterMs: number;
 }
 
@@ -159,13 +151,9 @@ export class HealthScoreTracker {
 }
 
 export interface TokenBucketConfig {
-	/** Default: 50 */
 	maxTokens: number;
-	/** Default: 6 */
 	regenerationRatePerMinute: number;
-	/** Default: 50 */
 	initialTokens: number;
-	/** Default: 1h */
 	staleAfterMs: number;
 }
 
@@ -266,6 +254,10 @@ export interface AccountWithMetrics extends AccountIdentity {
 	isCoolingDown: boolean;
 }
 
+/**
+ * Stickiness prevents rapid account switching (jitter) by adding a weight to the currently active account.
+ * It is calibrated against SWITCH_THRESHOLD to ensure switching only happens on significant score divergence.
+ */
 const STICKINESS_BONUS = 150;
 const SWITCH_THRESHOLD = 100;
 
@@ -301,6 +293,14 @@ export function selectHybridAccount(
 	return best?.index ?? null;
 }
 
+/**
+ * Calculates a score for an account based on health, token availability, and freshness.
+ * 
+ * Weights:
+ * - Health (x2): Reliability is important but secondary to rate limiting.
+ * - Tokens (x5): Main driver; ensures load is spread based on client-side capacity.
+ * - Freshness (0.1): Minor tie-breaker to prefer accounts that have rested longer.
+ */
 function calculateHybridScore(
 	account: AccountWithMetrics & { tokens: number },
 	maxTokens: number,
