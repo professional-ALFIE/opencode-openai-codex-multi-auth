@@ -768,7 +768,6 @@ export class AccountManager {
 				account.email = email;
 				account.plan = plan;
 				account.refreshToken = refreshed.refresh;
-				// Do not update originalRefreshToken here; let saveToDisk commit it.
 				repaired.push(account);
 			} catch {
 				quarantined.push(account);
