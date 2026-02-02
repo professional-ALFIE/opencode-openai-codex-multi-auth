@@ -17,6 +17,7 @@ type RateLimitState = Record<string, number | undefined>;
 
 const STORAGE_FILE = "openai-codex-accounts.json";
 const AUTH_DEBUG_ENABLED = getAuthDebugEnabled();
+// Limit quarantine and backup files to prevent unbounded disk usage.
 const MAX_QUARANTINE_FILES = 20;
 const MAX_BACKUP_FILES = 20;
 
@@ -182,6 +183,7 @@ async function ensureFileExists(path: string): Promise<void> {
 			null,
 			2,
 		),
+		// Mode 0o600: Owner read/write only (prevents leaks of refresh tokens).
 		{ encoding: "utf-8", mode: 0o600 },
 	);
 }
@@ -737,6 +739,9 @@ export async function saveAccountsWithLock(
 			const mergedStorage = mergeFn(existing);
 			const jsonContent = JSON.stringify(mergedStorage, null, 2);
 			debug(`[SaveAccountsWithLock] Writing ${jsonContent.length} bytes`);
+			
+			// Atomic write pattern: write to tmp file then rename to destination.
+			// This prevents data corruption during partial writes or power loss.
 			const tmpPath = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
 			try {
 				await fs.writeFile(tmpPath, jsonContent, { encoding: "utf-8", mode: 0o600 });
