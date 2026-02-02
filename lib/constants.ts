@@ -90,3 +90,6 @@ export const MODEL_FAMILIES = [
 ] as const;
 
 export type ModelFamily = (typeof MODEL_FAMILIES)[number];
+
+/** Default model family when no model is specified or recognized */
+export const DEFAULT_MODEL_FAMILY: ModelFamily = "gpt-5.1";
