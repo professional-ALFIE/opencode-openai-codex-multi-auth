@@ -44,6 +44,12 @@ export function extractAccountEmail(accessToken?: string): string | undefined {
 	if (!accessToken) return undefined;
 	const decoded = decodeJWT(accessToken);
 	const nested = decoded?.[JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
+	
+	// Priority list for email extraction:
+	// 1. OIDC 'email' claim in nested path.
+	// 2. ChatGPT-specific user email.
+	// 3. Root-level 'email' claim.
+	// 4. Preferred username (often email in these flows).
 	const candidate =
 		(nested?.email as string | undefined) ??
 		(nested?.chatgpt_user_email as string | undefined) ??
@@ -167,6 +173,7 @@ function mergeAccountRecords(
 	existing: AccountStorageV3["accounts"],
 	incoming: ManagedAccount[],
 ): AccountStorageV3["accounts"] {
+	// Deep copy to avoid side effects during merge.
 	const merged = existing.map((account) => ({
 		...account,
 		rateLimitResetTimes: account.rateLimitResetTimes
@@ -731,6 +738,10 @@ export class AccountManager {
 		}
 	}
 
+	/**
+	 * Repairs legacy accounts without full identity by attempting a token refresh.
+	 * Accounts that fail refresh or have mismatched IDs are quarantined for manual review.
+	 */
 	async repairLegacyAccounts(): Promise<{
 		repaired: ManagedAccount[];
 		quarantined: ManagedAccount[];
@@ -845,6 +856,10 @@ export class AccountManager {
 		return refreshPromise;
 	}
 
+	/**
+	 * Refreshes an account, falling back to reading from disk if the current refresh fails.
+	 * This handles cases where another process might have already rotated the token.
+	 */
 	async refreshAccountWithFallback(
 		account: ManagedAccount,
 		refreshFn: (refreshToken: string) => Promise<TokenResult> = refreshAccessToken,
