@@ -160,6 +160,119 @@ describe("hybrid rotation", () => {
 		const selected = selectHybridAccount(accounts, tokenTracker, 0, 50);
 		expect(selected).toBe(0);
 	});
+
+	it("skips rate-limited accounts", () => {
+		const tokenTracker = new TokenBucketTracker({
+			maxTokens: 10,
+			initialTokens: 10,
+			regenerationRatePerMinute: 0,
+		});
+		const now = Date.now();
+
+		const accounts: AccountWithMetrics[] = [
+			{
+				index: 0,
+				accountId: fixtureAccounts[0].accountId,
+				email: fixtureAccounts[0].email,
+				plan: fixtureAccounts[0].plan,
+				refreshToken: fixtureAccounts[0].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 90,
+				isRateLimited: true,
+				isCoolingDown: false,
+			},
+			{
+				index: 1,
+				accountId: fixtureAccounts[1].accountId,
+				email: fixtureAccounts[1].email,
+				plan: fixtureAccounts[1].plan,
+				refreshToken: fixtureAccounts[1].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 80,
+				isRateLimited: false,
+				isCoolingDown: false,
+			},
+		];
+
+		const selected = selectHybridAccount(accounts, tokenTracker, 0, 50);
+		expect(selected).toBe(1);
+	});
+
+	it("skips accounts without token budget", () => {
+		const tokenTracker = new TokenBucketTracker({
+			maxTokens: 10,
+			initialTokens: 10,
+			regenerationRatePerMinute: 0,
+		});
+		const now = Date.now();
+
+		const accounts: AccountWithMetrics[] = [
+			{
+				index: 0,
+				accountId: fixtureAccounts[0].accountId,
+				email: fixtureAccounts[0].email,
+				plan: fixtureAccounts[0].plan,
+				refreshToken: fixtureAccounts[0].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 90,
+				isRateLimited: false,
+				isCoolingDown: false,
+			},
+			{
+				index: 1,
+				accountId: fixtureAccounts[1].accountId,
+				email: fixtureAccounts[1].email,
+				plan: fixtureAccounts[1].plan,
+				refreshToken: fixtureAccounts[1].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 80,
+				isRateLimited: false,
+				isCoolingDown: false,
+			},
+		];
+
+		tokenTracker.consume(accounts[0], 10);
+
+		const selected = selectHybridAccount(accounts, tokenTracker, 0, 50);
+		expect(selected).toBe(1);
+	});
+
+	it("returns null when no account meets min health", () => {
+		const tokenTracker = new TokenBucketTracker({
+			maxTokens: 10,
+			initialTokens: 10,
+			regenerationRatePerMinute: 0,
+		});
+		const now = Date.now();
+
+		const accounts: AccountWithMetrics[] = [
+			{
+				index: 0,
+				accountId: fixtureAccounts[0].accountId,
+				email: fixtureAccounts[0].email,
+				plan: fixtureAccounts[0].plan,
+				refreshToken: fixtureAccounts[0].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 40,
+				isRateLimited: false,
+				isCoolingDown: false,
+			},
+			{
+				index: 1,
+				accountId: fixtureAccounts[1].accountId,
+				email: fixtureAccounts[1].email,
+				plan: fixtureAccounts[1].plan,
+				refreshToken: fixtureAccounts[1].refreshToken,
+				lastUsed: now - 10_000,
+				healthScore: 45,
+				isRateLimited: false,
+				isCoolingDown: false,
+			},
+		];
+
+		const selected = selectHybridAccount(accounts, tokenTracker, 0, 50);
+		expect(selected).toBeNull();
+	});
 });
 
 describe("HealthScoreTracker state management", () => {

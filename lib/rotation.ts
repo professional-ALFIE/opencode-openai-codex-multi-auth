@@ -261,10 +261,16 @@ export function selectHybridAccount(
 	accounts: AccountWithMetrics[],
 	tokenTracker: TokenBucketTracker,
 	_currentAccountIndex: number | null = null,
-	_minHealthScore = 50,
+	minHealthScore = 50,
 ): number | null {
 	const candidates = accounts
-		.filter((acc) => !acc.isCoolingDown)
+		.filter(
+			(acc) =>
+				!acc.isCoolingDown &&
+				!acc.isRateLimited &&
+				acc.healthScore >= minHealthScore &&
+				tokenTracker.hasTokens(acc),
+		)
 		.map((acc) => ({ ...acc, tokens: tokenTracker.getTokens(acc) }));
 
 	if (candidates.length === 0) return null;
