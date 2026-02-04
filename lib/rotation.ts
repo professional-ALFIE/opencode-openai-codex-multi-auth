@@ -255,23 +255,19 @@ export interface AccountWithMetrics extends AccountIdentity {
 }
 
 /**
- * Stickiness prevents rapid account switching (jitter) by adding a weight to the currently active account.
- * It is calibrated against SWITCH_THRESHOLD to ensure switching only happens on significant score divergence.
+ * Selects account by health score, token availability, then LRU.
  */
-const STICKINESS_BONUS = 150;
-const SWITCH_THRESHOLD = 100;
-
 export function selectHybridAccount(
 	accounts: AccountWithMetrics[],
 	tokenTracker: TokenBucketTracker,
-	currentAccountIndex: number | null = null,
+	_currentAccountIndex: number | null = null,
 	minHealthScore = 50,
 ): number | null {
 	const candidates = accounts
 		.filter(
 			(acc) =>
-				!acc.isRateLimited &&
 				!acc.isCoolingDown &&
+				!acc.isRateLimited &&
 				acc.healthScore >= minHealthScore &&
 				tokenTracker.hasTokens(acc),
 		)
@@ -279,37 +275,14 @@ export function selectHybridAccount(
 
 	if (candidates.length === 0) return null;
 
-	const maxTokens = tokenTracker.getMaxTokens();
-	const scored = candidates
-		.map((acc) => {
-			const base = calculateHybridScore(acc, maxTokens);
-			const isCurrent = currentAccountIndex !== null && acc.index === currentAccountIndex;
-			const score = base + (isCurrent ? STICKINESS_BONUS : 0);
-			return { index: acc.index, score, base, isCurrent };
-		})
-		.sort((a, b) => b.score - a.score);
+	candidates.sort((a, b) => {
+		if (b.healthScore !== a.healthScore) return b.healthScore - a.healthScore;
+		if (b.tokens !== a.tokens) return b.tokens - a.tokens;
+		if (a.lastUsed !== b.lastUsed) return a.lastUsed - b.lastUsed;
+		return a.index - b.index;
+	});
 
-	const best = scored[0];
-	return best?.index ?? null;
-}
-
-/**
- * Calculates a score for an account based on health, token availability, and freshness.
- * 
- * Weights:
- * - Health (x2): Reliability is important but secondary to rate limiting.
- * - Tokens (x5): Main driver; ensures load is spread based on client-side capacity.
- * - Freshness (0.1): Minor tie-breaker to prefer accounts that have rested longer.
- */
-function calculateHybridScore(
-	account: AccountWithMetrics & { tokens: number },
-	maxTokens: number,
-): number {
-	const healthComponent = account.healthScore * 2;
-	const tokenComponent = (account.tokens / maxTokens) * 100 * 5;
-	const secondsSinceUsed = (Date.now() - account.lastUsed) / 1000;
-	const freshnessComponent = Math.min(secondsSinceUsed, 3600) * 0.1;
-	return Math.max(0, healthComponent + tokenComponent + freshnessComponent);
+	return candidates[0]?.index ?? null;
 }
 
 let globalTokenTracker: TokenBucketTracker | null = null;

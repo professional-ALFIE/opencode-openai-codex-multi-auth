@@ -7,6 +7,7 @@ import { AUTH_LABELS, JWT_CLAIM_PATH } from "../lib/constants.js";
 import { createJwt } from "./helpers/jwt.js";
 
 const mockLoadAccounts = vi.fn();
+const mockSaveAccountsWithLock = vi.fn();
 let capturedStorage: AccountStorageV3 | null = null;
 
 vi.mock("@opencode-ai/plugin", () => {
@@ -36,8 +37,8 @@ vi.mock("../lib/storage.js", async () => {
 	return {
 		...actual,
 		loadAccounts: () => mockLoadAccounts(),
-		saveAccounts: async (storage: AccountStorageV3) => {
-			capturedStorage = storage;
+		saveAccountsWithLock: async (mergeFn: (existing: AccountStorageV3 | null) => AccountStorageV3) => {
+			capturedStorage = mergeFn(null);
 		},
 	};
 });
@@ -70,9 +71,46 @@ async function loadPlugin() {
 describe("auth login workflow", () => {
 	beforeEach(() => {
 		mockLoadAccounts.mockReset();
+		mockSaveAccountsWithLock.mockReset();
 		capturedStorage = null;
 	});
 
+	it("uses separate oauth labels", () => {
+		expect(AUTH_LABELS.OAUTH).toBe("Codex Oauth (browser)");
+		expect(AUTH_LABELS.OAUTH_MANUAL).toBe("Codex Oauth (headless)");
+	});
+
+	it("exposes only oauth login when accounts exist", async () => {
+		mockLoadAccounts.mockResolvedValueOnce(fixture);
+
+		const OpenAIAuthPlugin = await loadPlugin();
+		const plugin = await OpenAIAuthPlugin(createPluginInput());
+		const labels = plugin.auth?.methods.map((method) => method.label) ?? [];
+
+		expect(labels).toContain(AUTH_LABELS.OAUTH);
+		expect(labels).not.toContain(AUTH_LABELS.API_KEY);
+		expect(labels).toHaveLength(1);
+	});
+
+	it("exposes oauth/manual/api login when no accounts exist", async () => {
+		mockLoadAccounts.mockResolvedValueOnce({
+			...fixture,
+			accounts: [],
+		});
+
+		const OpenAIAuthPlugin = await loadPlugin();
+		const plugin = await OpenAIAuthPlugin(createPluginInput());
+		const labels = plugin.auth?.methods.map((method) => method.label) ?? [];
+
+		expect(labels).toEqual(
+			expect.arrayContaining([
+				AUTH_LABELS.OAUTH,
+				AUTH_LABELS.OAUTH_MANUAL,
+				AUTH_LABELS.API_KEY,
+			]),
+		);
+		expect(labels).toHaveLength(3);
+	});
 	it("falls back to access token claims when id token is missing identity", async () => {
 		const originalNoBrowser = process.env.OPENCODE_NO_BROWSER;
 		process.env.OPENCODE_NO_BROWSER = "1";
