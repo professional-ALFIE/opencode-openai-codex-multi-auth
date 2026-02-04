@@ -3,8 +3,7 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccountStorageV3 } from "../lib/types.js";
-import { AUTH_LABELS } from "../lib/constants.js";
-import { JWT_CLAIM_PATH } from "../lib/constants.js";
+import { AUTH_LABELS, JWT_CLAIM_PATH } from "../lib/constants.js";
 import { createJwt } from "./helpers/jwt.js";
 
 const mockLoadAccounts = vi.fn();
@@ -112,7 +111,6 @@ describe("auth login workflow", () => {
 		);
 		expect(labels).toHaveLength(3);
 	});
-
 	it("falls back to access token claims when id token is missing identity", async () => {
 		const originalNoBrowser = process.env.OPENCODE_NO_BROWSER;
 		process.env.OPENCODE_NO_BROWSER = "1";

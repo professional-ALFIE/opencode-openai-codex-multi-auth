@@ -216,7 +216,11 @@ function mergeAccountRecords(
 		const updated = { ...current };
 
 		if (candidate.refreshToken && candidate.refreshToken !== updated.refreshToken) {
-			if (candidate.refreshToken !== candidate.originalRefreshToken && candidate.lastUsed > (updated.lastUsed || 0)) {
+			const originalToken = candidate.originalRefreshToken;
+			const rotated = Boolean(originalToken) && candidate.refreshToken !== originalToken;
+			const diskMatchesOriginal = Boolean(originalToken) && updated.refreshToken === originalToken;
+			const candidateIsNewer = candidate.lastUsed > (updated.lastUsed || 0);
+			if (rotated && (diskMatchesOriginal || candidateIsNewer)) {
 				updated.refreshToken = candidate.refreshToken;
 			}
 		}
