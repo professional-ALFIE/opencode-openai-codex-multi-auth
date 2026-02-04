@@ -177,6 +177,44 @@ describe("AccountManager", () => {
 		}
 	});
 
+	it("saveToDisk persists rotated token when lastUsed is unchanged", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
+		process.env.XDG_CONFIG_HOME = root;
+		try {
+			seedStorageFromBackup(root);
+			const fixture = loadFixture("openai-codex-accounts.json");
+			const accountOne = fixture.accounts[0]!;
+			const initialStorage: AccountStorageV3 = {
+				...fixture,
+				accounts: [accountOne],
+			};
+			writeFileSync(
+				getStoragePath(),
+				JSON.stringify(initialStorage, null, 2),
+				"utf-8",
+			);
+
+			const manager = await AccountManager.loadFromDisk(createAuth(accountOne.refreshToken));
+			const account = manager.getCurrentOrNextForFamily("codex", null, "sticky", false);
+			if (!account) throw new Error("Expected account");
+
+			const originalLastUsed = account.lastUsed;
+			const updatedToken = `${account.refreshToken}-rotated`;
+			account.refreshToken = updatedToken;
+			account.lastUsed = originalLastUsed;
+
+			await manager.saveToDisk();
+
+			const finalStorage = await loadAccounts();
+			const stored = finalStorage?.accounts.find(
+				(entry) => entry.accountId === accountOne.accountId && entry.email === accountOne.email && entry.plan === accountOne.plan,
+			);
+			expect(stored?.refreshToken).toBe(updatedToken);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("saveToDisk does not duplicate legacy accounts missing identity", async () => {
 		const root = mkdtempSync(join(tmpdir(), "opencode-accounts-"));
 		process.env.XDG_CONFIG_HOME = root;
