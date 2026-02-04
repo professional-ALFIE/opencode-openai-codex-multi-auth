@@ -5,10 +5,9 @@ import { RateLimitTracker } from '../lib/rate-limit.js';
 import { CodexStatusManager } from '../lib/codex-status.js';
 import { TokenBucketTracker, HealthScoreTracker } from '../lib/rotation.js';
 import { PluginConfig } from '../lib/types.js';
-import { quarantineAccounts } from '../lib/storage.js';
 
 vi.mock('../lib/storage.js', () => ({
-	quarantineAccounts: vi.fn(),
+	quarantineAccountsByRefreshToken: vi.fn(),
 	replaceAccountsFile: vi.fn(),
 }));
 
@@ -21,13 +20,18 @@ describe('FetchOrchestrator', () => {
 	let tokenTracker: any;
 	let codexStatus: any;
 	let pluginConfig: PluginConfig;
+	let quarantineAccountsByRefreshToken: any;
 
 	const mockFetch = vi.fn();
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		vi.useFakeTimers();
 		vi.resetAllMocks();
-		vi.mocked(quarantineAccounts).mockResolvedValue({
+		const storageModule = (await import('../lib/storage.js')) as any;
+		quarantineAccountsByRefreshToken = vi.mocked(
+			storageModule.quarantineAccountsByRefreshToken,
+		);
+		quarantineAccountsByRefreshToken.mockResolvedValue({
 			storage: { version: 3, accounts: [], activeIndex: 0, activeIndexByFamily: {} },
 			quarantinePath: "/tmp/quarantine.json",
 		});
@@ -457,11 +461,12 @@ describe('FetchOrchestrator', () => {
 		const response = await orchestrator.execute('https://api.openai.com/v1/chat/completions', { method: 'POST' });
 
 		expect(response.status).toBe(429);
-		expect(quarantineAccounts).toHaveBeenCalledWith(
-			expect.objectContaining({ version: 3 }),
-			[expect.objectContaining({ refreshToken: 'legacy-refresh' })],
-			'legacy-repair',
-		);
+		expect(quarantineAccountsByRefreshToken).toHaveBeenCalled();
+		const [tokenSetArg, reasonArg] =
+			quarantineAccountsByRefreshToken.mock.calls[0] ?? [];
+		expect(tokenSetArg).toBeInstanceOf(Set);
+		expect(tokenSetArg.has('legacy-refresh')).toBe(true);
+		expect(reasonArg).toBe('legacy-repair');
 		expect(accountManager.removeAccountsByRefreshToken).toHaveBeenCalled();
 		const [tokenSet] = accountManager.removeAccountsByRefreshToken.mock.calls[0];
 		expect(tokenSet).toBeInstanceOf(Set);

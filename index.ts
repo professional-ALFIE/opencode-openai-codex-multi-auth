@@ -259,6 +259,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		};
 	};
 
+	const toggleAccountFromStorage = (
+		storage: AccountStorageV3,
+		target: { accountId?: string; email?: string; plan?: string; refreshToken?: string },
+	): AccountStorageV3 => {
+		const index = findAccountIndex(storage, target);
+		if (index < 0 || index >= storage.accounts.length) return storage;
+		return toggleAccountEnabled(storage, index) ?? storage;
+	};
+
 	const buildExistingAccountLabels = (storage: AccountStorageV3) =>
 		storage.accounts.map((account, index) => ({
 			index,
@@ -291,13 +300,9 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 								continue;
 							}
 
-						const actionIndex = findAccountIndex(existingStorage, action.target);
-						if (actionIndex < 0) {
-							continue;
-						}
 						if (action.action === "toggle") {
 							existingStorage = await updateStorageWithLock((current) =>
-								toggleAccountEnabled(current, actionIndex),
+								toggleAccountFromStorage(current, action.target),
 							);
 						} else {
 							existingStorage = await updateStorageWithLock((current) =>

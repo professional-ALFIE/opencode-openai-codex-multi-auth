@@ -934,6 +934,49 @@ export async function quarantineAccounts(
 	return { storage: updated, quarantinePath };
 }
 
+export async function quarantineAccountsByRefreshToken(
+	tokens: Set<string>,
+	reason: string,
+): Promise<{ storage: AccountStorageV3; quarantinePath: string }> {
+	let updatedStorage: AccountStorageV3 = {
+		version: 3,
+		accounts: [],
+		activeIndex: 0,
+		activeIndexByFamily: {},
+	};
+	let quarantineEntries: AccountRecord[] = [];
+
+	await saveAccountsWithLock((existing) => {
+		const base = existing ?? updatedStorage;
+		quarantineEntries = base.accounts.filter((account) =>
+			tokens.has(account.refreshToken),
+		);
+		if (!quarantineEntries.length) {
+			updatedStorage = base;
+			return base;
+		}
+		const remaining = base.accounts.filter(
+			(account) => !tokens.has(account.refreshToken),
+		);
+		const normalized = normalizeStorage({
+			accounts: remaining,
+			activeIndex: base.activeIndex,
+			activeIndexByFamily: base.activeIndexByFamily,
+		});
+		updatedStorage =
+			normalized ?? {
+				version: 3,
+				accounts: [],
+				activeIndex: 0,
+				activeIndexByFamily: {},
+			};
+		return updatedStorage;
+	});
+
+	const quarantinePath = await writeQuarantineFile(quarantineEntries, reason);
+	return { storage: updatedStorage, quarantinePath };
+}
+
 export async function loadAccounts(): Promise<AccountStorageV3 | null> {
 	await migrateLegacyAccountsFileIfNeeded();
 	const filePath = getStoragePath();

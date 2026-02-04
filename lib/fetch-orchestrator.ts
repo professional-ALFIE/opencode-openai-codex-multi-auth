@@ -52,7 +52,7 @@ import {
 } from "./request/fetch-helpers.js";
 import { getModelFamily } from "./prompts/codex.js";
 import { logDebug, logWarn } from "./logger.js";
-import { quarantineAccounts } from "./storage.js";
+import { quarantineAccountsByRefreshToken } from "./storage.js";
 
 const RATE_LIMIT_SHORT_RETRY_THRESHOLD_MS = 5_000;
 // Cooldown prevents spamming authentication requests for accounts with persistent failures.
@@ -190,9 +190,7 @@ export class FetchOrchestrator {
 					const repair = await accountManager.repairLegacyAccounts();
 					const tokens = new Set(repair.quarantined.map((account) => account.refreshToken));
 					if (tokens.size > 0) {
-						const snapshot = accountManager.getStorageSnapshot();
-						const entries = snapshot.accounts.filter((entry) => tokens.has(entry.refreshToken));
-						await quarantineAccounts(snapshot, entries, "legacy-repair");
+						await quarantineAccountsByRefreshToken(tokens, "legacy-repair");
 						accountManager.removeAccountsByRefreshToken(tokens);
 					} else if (repair.repaired.length > 0) {
 						await accountManager.saveToDisk();
