@@ -11,6 +11,8 @@ export interface ExistingAccountLabel {
 	enabled?: boolean;
 }
 
+export type ManageAccountAction = { action: "toggle" | "remove"; index: number };
+
 export async function promptLoginMode(
 	existing: ExistingAccountLabel[],
 ): Promise<"add" | "fresh" | "manage"> {
