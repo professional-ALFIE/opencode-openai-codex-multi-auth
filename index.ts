@@ -120,11 +120,15 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 		const now = Date.now();
 		const stored = await loadAccounts();
 		const accounts = stored?.accounts ? [...stored.accounts] : [];
-		const accountId = extractAccountId(token.access);
+		const accountId =
+			extractAccountId(token.idToken) ?? extractAccountId(token.access);
 		
 		// Priority for email/plan extraction: ID Token (OIDC) > Access Token.
-		const email = sanitizeEmail(extractAccountEmail(token.idToken ?? token.access));
-		const plan = extractAccountPlan(token.idToken ?? token.access);
+		const email = sanitizeEmail(
+			extractAccountEmail(token.idToken) ?? extractAccountEmail(token.access),
+		);
+		const plan =
+			extractAccountPlan(token.idToken) ?? extractAccountPlan(token.access);
 		
 		const existingIndex = findAccountMatchIndex(accounts, { accountId, plan, email });
 
