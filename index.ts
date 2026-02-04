@@ -73,6 +73,7 @@ import {
 	type RefreshScheduler,
 } from "./lib/refresh-queue.js";
 import { formatToastMessage } from "./lib/formatting.js";
+import { logWarn } from "./lib/logger.js";
 import { FetchOrchestrator } from "./lib/fetch-orchestrator.js";
 
 
@@ -93,7 +94,7 @@ export const OpenAIAuthPlugin: Plugin = async ({ client }: PluginInput) => {
 			await client.tui.showToast({ body: { message: formatToastMessage(message), variant } });
 		} catch (err) {
 			// Toast failures should not crash the plugin; log to debug output.
-			if (!quietMode) console.error("[Toast Error]", err);
+			if (!quietMode) logWarn("Toast error", err);
 		}
 	};
 

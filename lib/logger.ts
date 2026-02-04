@@ -1,11 +1,12 @@
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { PLUGIN_NAME } from "./constants.js";
+import { getAuthDebugEnabled } from "./config.js";
 import { getOpencodeLogDir, migrateLegacyLogDir } from "./paths.js";
 
 // Logging configuration
 export const LOGGING_ENABLED = process.env.ENABLE_PLUGIN_REQUEST_LOGGING === "1";
-export const DEBUG_ENABLED = process.env.DEBUG_CODEX_PLUGIN === "1" || LOGGING_ENABLED;
+export const DEBUG_ENABLED = getAuthDebugEnabled() || LOGGING_ENABLED;
 const LOG_DIR = getOpencodeLogDir();
 
 migrateLegacyLogDir();
