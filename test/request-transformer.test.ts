@@ -82,14 +82,21 @@ describe('Request Transformer Module', () => {
 				expect(normalizeModel('openai/gpt-5.1-codex-max-medium')).toBe('gpt-5.1-codex-max');
 			});
 
-			it('should normalize gpt-5.2 codex presets', async () => {
-				expect(normalizeModel('gpt-5.2-codex')).toBe('gpt-5.2-codex');
-				expect(normalizeModel('gpt-5.2-codex-low')).toBe('gpt-5.2-codex');
-				expect(normalizeModel('gpt-5.2-codex-medium')).toBe('gpt-5.2-codex');
-				expect(normalizeModel('gpt-5.2-codex-high')).toBe('gpt-5.2-codex');
-				expect(normalizeModel('gpt-5.2-codex-xhigh')).toBe('gpt-5.2-codex');
-				expect(normalizeModel('openai/gpt-5.2-codex-xhigh')).toBe('gpt-5.2-codex');
-			});
+				it('should normalize gpt-5.3 and gpt-5.2 codex presets', async () => {
+					expect(normalizeModel('gpt-5.2-codex')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('gpt-5.2-codex-low')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('gpt-5.2-codex-medium')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('gpt-5.2-codex-high')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('gpt-5.2-codex-xhigh')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('openai/gpt-5.2-codex-xhigh')).toBe('gpt-5.2-codex');
+					expect(normalizeModel('gpt-5.3-codex')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('gpt-5.3-codex-low')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('gpt-5.3-codex-medium')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('gpt-5.3-codex-high')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('gpt-5.3-codex-xhigh')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('openai/gpt-5.3-codex')).toBe('gpt-5.3-codex');
+					expect(normalizeModel('openai/gpt-5.3-codex-xhigh')).toBe('gpt-5.3-codex');
+				});
 
 			it('should normalize gpt-5.1 codex and mini slugs', async () => {
 				expect(normalizeModel('gpt-5.1-codex')).toBe('gpt-5.1-codex');
@@ -103,6 +110,15 @@ describe('Request Transformer Module', () => {
 				expect(normalizeModel('gpt-5.1')).toBe('gpt-5.1');
 				expect(normalizeModel('openai/gpt-5.1')).toBe('gpt-5.1');
 				expect(normalizeModel('GPT 5.1 High')).toBe('gpt-5.1');
+			});
+
+			it('should normalize future codex model variants without explicit map entries', async () => {
+				expect(normalizeModel('gpt-5.4-codex')).toBe('gpt-5.4-codex');
+				expect(normalizeModel('gpt-5.4-codex-low')).toBe('gpt-5.4-codex');
+				expect(normalizeModel('gpt-5.4-codex-medium')).toBe('gpt-5.4-codex');
+				expect(normalizeModel('gpt-5.4-codex-high')).toBe('gpt-5.4-codex');
+				expect(normalizeModel('gpt-5.4-codex-xhigh')).toBe('gpt-5.4-codex');
+				expect(normalizeModel('openai/gpt-5.4-codex-xhigh')).toBe('gpt-5.4-codex');
 			});
 		});
 
