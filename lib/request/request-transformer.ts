@@ -1,12 +1,7 @@
 import { logDebug, logWarn } from "../logger.js";
-import { TOOL_REMAP_MESSAGE } from "../prompts/codex.js";
-import { CODEX_OPENCODE_BRIDGE } from "../prompts/codex-opencode-bridge.js";
-import { getOpenCodeCodexPrompt } from "../prompts/opencode-codex.js";
+import type { CodexModelRuntimeDefaults } from "../prompts/codex-models.js";
 import { getNormalizedModel } from "./helpers/model-map.js";
-import {
-	filterOpenCodeSystemPromptsWithCachedPrompt,
-	normalizeOrphanedToolOutputs,
-} from "./helpers/input-utils.js";
+import { normalizeOrphanedToolOutputs } from "./helpers/input-utils.js";
 import type {
 	ConfigOptions,
 	InputItem,
@@ -15,10 +10,94 @@ import type {
 	UserConfig,
 } from "../types.js";
 
-export {
-	isOpenCodeSystemPrompt,
-	filterOpenCodeSystemPromptsWithCachedPrompt,
-} from "./helpers/input-utils.js";
+type PersonalityOption = NonNullable<ConfigOptions["personality"]>;
+
+const PERSONALITY_VALUES = new Set<PersonalityOption>([
+	"none",
+	"friendly",
+	"pragmatic",
+]);
+const PERSONALITY_PLACEHOLDER = "{{ personality }}";
+const PERSONALITY_FALLBACK_TEXT: Record<Exclude<PersonalityOption, "none">, string> = {
+	friendly:
+		"Adopt a friendly, collaborative tone while staying technically precise.",
+	pragmatic:
+		"Adopt a pragmatic, concise, execution-focused tone with direct guidance.",
+};
+let didLogInvalidPersonality = false;
+
+function normalizePersonalityValue(
+	value: unknown,
+	source: "model" | "global",
+): PersonalityOption | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (!PERSONALITY_VALUES.has(normalized as PersonalityOption)) {
+		if (!didLogInvalidPersonality) {
+			logDebug(
+				`Ignoring invalid ${source} personality "${value}" and using fallback chain`,
+			);
+			didLogInvalidPersonality = true;
+		}
+		return undefined;
+	}
+	return normalized as PersonalityOption;
+}
+
+function resolvePersonality(
+	modelOptions: ConfigOptions,
+	globalOptions: ConfigOptions,
+	runtimeDefaults?: CodexModelRuntimeDefaults,
+): PersonalityOption {
+	const modelValue = normalizePersonalityValue(modelOptions.personality, "model");
+	if (modelValue) return modelValue;
+
+	// Online model default is preferred over global backup when available.
+	if (runtimeDefaults?.onlineDefaultPersonality) {
+		return runtimeDefaults.onlineDefaultPersonality;
+	}
+
+	const globalValue = normalizePersonalityValue(
+		globalOptions.personality,
+		"global",
+	);
+	if (globalValue) return globalValue;
+
+	return runtimeDefaults?.staticDefaultPersonality ?? "none";
+}
+
+function resolvePersonalityMessage(
+	personality: PersonalityOption,
+	runtimeDefaults?: CodexModelRuntimeDefaults,
+): string {
+	if (personality === "none") {
+		return runtimeDefaults?.personalityMessages?.default ?? "";
+	}
+	return (
+		runtimeDefaults?.personalityMessages?.[personality] ??
+		PERSONALITY_FALLBACK_TEXT[personality]
+	);
+}
+
+function renderCodexInstructions(
+	baseInstructions: string,
+	personality: PersonalityOption,
+	runtimeDefaults?: CodexModelRuntimeDefaults,
+): string {
+	const instructions = runtimeDefaults?.instructionsTemplate ?? baseInstructions;
+	const personalityMessage = resolvePersonalityMessage(personality, runtimeDefaults);
+
+	if (instructions.includes(PERSONALITY_PLACEHOLDER)) {
+		return instructions.replaceAll(PERSONALITY_PLACEHOLDER, personalityMessage);
+	}
+
+	if (personality === "none") return instructions;
+
+	const appended = personalityMessage.trim();
+	if (!appended) return instructions;
+
+	return `${instructions}\n\n<personality_spec>\n${appended}\n</personality_spec>`;
+}
 
 /**
  * Normalize model name to Codex-supported variants
@@ -327,80 +406,6 @@ export function filterInput(
 }
 
 /**
- * Filter out OpenCode system prompts from input
- * Used in CODEX_MODE to replace OpenCode prompts with Codex-OpenCode bridge
- * @param input - Input array
- * @returns Input array without OpenCode system prompts
- */
-export async function filterOpenCodeSystemPrompts(
-	input: InputItem[] | undefined,
-): Promise<InputItem[] | undefined> {
-	if (!Array.isArray(input)) return input;
-
-	let cachedPrompt: string | null = null;
-	try {
-		cachedPrompt = await getOpenCodeCodexPrompt();
-	} catch {
-		// If fetch fails, fallback to text-based detection only
-		// This is safe because we still have the "starts with" check
-	}
-
-	return filterOpenCodeSystemPromptsWithCachedPrompt(input, cachedPrompt);
-}
-
-/**
- * Add Codex-OpenCode bridge message to input if tools are present
- * @param input - Input array
- * @param hasTools - Whether tools are present in request
- * @returns Input array with bridge message prepended if needed
- */
-export function addCodexBridgeMessage(
-	input: InputItem[] | undefined,
-	hasTools: boolean,
-): InputItem[] | undefined {
-	if (!hasTools || !Array.isArray(input)) return input;
-
-	const bridgeMessage: InputItem = {
-		type: "message",
-		role: "developer",
-		content: [
-			{
-				type: "input_text",
-				text: CODEX_OPENCODE_BRIDGE,
-			},
-		],
-	};
-
-	return [bridgeMessage, ...input];
-}
-
-/**
- * Add tool remapping message to input if tools are present
- * @param input - Input array
- * @param hasTools - Whether tools are present in request
- * @returns Input array with tool remap message prepended if needed
- */
-export function addToolRemapMessage(
-	input: InputItem[] | undefined,
-	hasTools: boolean,
-): InputItem[] | undefined {
-	if (!hasTools || !Array.isArray(input)) return input;
-
-	const toolRemapMessage: InputItem = {
-		type: "message",
-		role: "developer",
-		content: [
-			{
-				type: "input_text",
-				text: TOOL_REMAP_MESSAGE,
-			},
-		],
-	};
-
-	return [toolRemapMessage, ...input];
-}
-
-/**
  * Transform request body for Codex API
  *
  * NOTE: Configuration follows Codex CLI patterns instead of opencode defaults:
@@ -411,28 +416,36 @@ export function addToolRemapMessage(
  * @param body - Original request body
  * @param codexInstructions - Codex system instructions
  * @param userConfig - User configuration from loader
- * @param codexMode - Enable CODEX_MODE (bridge prompt instead of tool remap) - defaults to true
+ * @param runtimeDefaults - Runtime model defaults resolved from server/cache/static fallback
  * @returns Transformed request body
  */
 export async function transformRequestBody(
 	body: RequestBody,
 	codexInstructions: string,
 	userConfig: UserConfig = { global: {}, models: {} },
-	codexMode = true,
+	runtimeDefaults?: CodexModelRuntimeDefaults,
 ): Promise<RequestBody> {
 	const originalModel = body.model;
 	const normalizedModel = normalizeModel(body.model);
+	const globalOptions = userConfig.global || {};
+	const modelOptions = userConfig.models?.[originalModel || normalizedModel]?.options || {};
 
 	// Get model-specific configuration using ORIGINAL model name (config key)
 	// This allows per-model options like "gpt-5-codex-low" to work correctly
 	const lookupModel = originalModel || normalizedModel;
 	const modelConfig = getModelConfig(lookupModel, userConfig);
+	const personality = resolvePersonality(
+		modelOptions,
+		globalOptions,
+		runtimeDefaults,
+	);
 
 	logDebug(
 		`Model config lookup: "${lookupModel}" → normalized to "${normalizedModel}" for API`,
 		{
 			hasModelSpecificConfig: !!userConfig.models?.[lookupModel],
 			resolvedConfig: modelConfig,
+			personality,
 		},
 	);
 
@@ -441,7 +454,11 @@ export async function transformRequestBody(
 
 	body.store = false;
 	body.stream = true;
-	body.instructions = codexInstructions;
+	body.instructions = renderCodexInstructions(
+		codexInstructions,
+		personality,
+		runtimeDefaults,
+	);
 
 	// Prompt caching relies on the host providing a stable prompt_cache_key
 	// (OpenCode passes its session identifier). We no longer synthesize one here.
@@ -470,15 +487,6 @@ export async function transformRequestBody(
 			);
 		} else if (originalIds.length > 0) {
 			logDebug(`Successfully removed all ${originalIds.length} message IDs`);
-		}
-
-		if (codexMode) {
-			// CODEX_MODE: Remove OpenCode system prompt, add bridge prompt
-			body.input = await filterOpenCodeSystemPrompts(body.input);
-			body.input = addCodexBridgeMessage(body.input, !!body.tools);
-		} else {
-			// DEFAULT MODE: Keep original behavior with tool remap message
-			body.input = addToolRemapMessage(body.input, !!body.tools);
 		}
 
 		// Handle orphaned function_call_output items (where function_call was an item_reference that got filtered)

@@ -1,17 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     normalizeModel,
     getModelConfig,
     filterInput,
-    addToolRemapMessage,
-    isOpenCodeSystemPrompt,
-    filterOpenCodeSystemPrompts,
-    filterOpenCodeSystemPromptsWithCachedPrompt,
-    addCodexBridgeMessage,
     transformRequestBody,
 } from '../lib/request/request-transformer.js';
-import { TOOL_REMAP_MESSAGE } from '../lib/prompts/codex.js';
-import { CODEX_OPENCODE_BRIDGE } from '../lib/prompts/codex-opencode-bridge.js';
 import type { RequestBody, UserConfig, InputItem } from '../lib/types.js';
 
 describe('Request Transformer Module', () => {
@@ -359,270 +352,6 @@ describe('Request Transformer Module', () => {
 		});
 	});
 
-	describe('addToolRemapMessage', () => {
-		it('should prepend tool remap message when tools present', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = addToolRemapMessage(input, true);
-
-			expect(result).toHaveLength(2);
-			expect(result![0].role).toBe('developer');
-			expect(result![0].type).toBe('message');
-			expect((result![0].content as any)[0].text).toContain('apply_patch');
-		});
-
-		it('should not modify input when tools not present', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = addToolRemapMessage(input, false);
-			expect(result).toEqual(input);
-		});
-
-		it('should return undefined for undefined input', async () => {
-			expect(addToolRemapMessage(undefined, true)).toBeUndefined();
-		});
-
-		it('should handle non-array input', async () => {
-			const notArray = { notAnArray: true };
-			expect(addToolRemapMessage(notArray as any, true)).toBe(notArray);
-		});
-	});
-
-	describe('isOpenCodeSystemPrompt', () => {
-		it('should detect OpenCode system prompt with string content', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: 'You are a coding agent running in the opencode, a terminal-based coding assistant.',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(true);
-		});
-
-		it('should detect OpenCode system prompt with array content', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: [
-					{
-						type: 'input_text',
-						text: 'You are a coding agent running in the opencode, a terminal-based coding assistant.',
-					},
-				],
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(true);
-		});
-
-		it('should detect with system role', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'system',
-				content: 'You are a coding agent running in the opencode, a terminal-based coding assistant.',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(true);
-		});
-
-		it('should not detect non-system roles', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'user',
-				content: 'You are a coding agent running in the opencode, a terminal-based coding assistant.',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(false);
-		});
-
-		it('should not detect different content', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: 'Different message',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(false);
-		});
-
-		it('should NOT detect AGENTS.md content', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: '# Project Guidelines\n\nThis is custom AGENTS.md content for the project.',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(false);
-		});
-
-		it('should NOT detect environment info concatenated with AGENTS.md', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: 'Environment: /path/to/project\nDate: 2025-01-01\n\n# AGENTS.md\n\nCustom instructions here.',
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(false);
-		});
-
-		it('should NOT detect content with codex signature in the middle', async () => {
-			const cachedPrompt = 'You are a coding agent running in the opencode.';
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				// Has codex.txt content but with environment prepended (like OpenCode does)
-				content: 'Environment info here\n\nYou are a coding agent running in the opencode.',
-			};
-			// First 200 chars won't match because of prepended content
-			expect(isOpenCodeSystemPrompt(item, cachedPrompt)).toBe(false);
-		});
-
-		it('should detect with cached prompt exact match', async () => {
-			const cachedPrompt = 'You are a coding agent running in the opencode';
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: 'You are a coding agent running in the opencode',
-			};
-			expect(isOpenCodeSystemPrompt(item, cachedPrompt)).toBe(true);
-		});
-
-		it('should detect alternative OpenCode prompt signatures', async () => {
-			const item: InputItem = {
-				type: 'message',
-				role: 'developer',
-				content: "You are opencode, an agent - please keep going until the user's query is completely resolved.",
-			};
-			expect(isOpenCodeSystemPrompt(item, null)).toBe(true);
-		});
-	});
-
-	describe('filterOpenCodeSystemPrompts', () => {
-		it('should filter out OpenCode system prompts', async () => {
-			const input: InputItem[] = [
-				{
-					type: 'message',
-					role: 'developer',
-					content: 'You are a coding agent running in the opencode',
-				},
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			expect(result).toHaveLength(1);
-			expect(result![0].role).toBe('user');
-		});
-
-		it('should keep user messages', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'user', content: 'message 1' },
-				{ type: 'message', role: 'user', content: 'message 2' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			expect(result).toHaveLength(2);
-		});
-
-		it('should keep non-OpenCode developer messages', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'developer', content: 'Custom instruction' },
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			expect(result).toHaveLength(2);
-		});
-
-		it('should keep AGENTS.md content (not filter it)', async () => {
-			const input: InputItem[] = [
-				{
-					type: 'message',
-					role: 'developer',
-					content: 'You are a coding agent running in the opencode', // This is codex.txt
-				},
-				{
-					type: 'message',
-					role: 'developer',
-					content: '# Project Guidelines\n\nThis is AGENTS.md content.', // This is AGENTS.md
-				},
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			// Should filter codex.txt but keep AGENTS.md
-			expect(result).toHaveLength(2);
-			expect(result![0].content).toContain('AGENTS.md');
-			expect(result![1].role).toBe('user');
-		});
-
-		it('should strip OpenCode prompt but keep concatenated env/instructions', async () => {
-			const input: InputItem[] = [
-				{
-					type: 'message',
-					role: 'developer',
-					content: [
-						'You are a coding agent running in the opencode, a terminal-based coding assistant.',
-						'Here is some useful information about the environment you are running in:',
-						'<env>',
-						'  Working directory: /path/to/project',
-						'</env>',
-						'Instructions from: /path/to/AGENTS.md',
-						'# Project Guidelines',
-					].join('\n'),
-				},
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			expect(result).toHaveLength(2);
-			const preserved = String(result![0].content);
-			expect(preserved).toContain('Here is some useful information about the environment');
-			expect(preserved).toContain('Instructions from: /path/to/AGENTS.md');
-			expect(preserved).not.toContain('You are a coding agent running in the opencode');
-		});
-
-		it('should keep environment+AGENTS.md concatenated message', async () => {
-			const input: InputItem[] = [
-				{
-					type: 'message',
-					role: 'developer',
-					content: 'You are a coding agent running in the opencode', // codex.txt alone
-				},
-				{
-					type: 'message',
-					role: 'developer',
-					// environment + AGENTS.md joined (like OpenCode does)
-					content: 'Working directory: /path/to/project\nDate: 2025-01-01\n\n# AGENTS.md\n\nCustom instructions.',
-				},
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = filterOpenCodeSystemPromptsWithCachedPrompt(input, null);
-			// Should filter first message (codex.txt) but keep second (env+AGENTS.md)
-			expect(result).toHaveLength(2);
-			expect(result![0].content).toContain('AGENTS.md');
-			expect(result![1].role).toBe('user');
-		});
-
-		it('should return undefined for undefined input', async () => {
-			expect(await filterOpenCodeSystemPrompts(undefined)).toBeUndefined();
-		});
-	});
-
-	describe('addCodexBridgeMessage', () => {
-		it('should prepend bridge message when tools present', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = addCodexBridgeMessage(input, true);
-
-			expect(result).toHaveLength(2);
-			expect(result![0].role).toBe('developer');
-			expect(result![0].type).toBe('message');
-			expect((result![0].content as any)[0].text).toContain('Codex Running in OpenCode');
-		});
-
-		it('should not modify input when tools not present', async () => {
-			const input: InputItem[] = [
-				{ type: 'message', role: 'user', content: 'hello' },
-			];
-			const result = addCodexBridgeMessage(input, false);
-			expect(result).toEqual(input);
-		});
-
-		it('should return undefined for undefined input', async () => {
-			expect(addCodexBridgeMessage(undefined, true)).toBeUndefined();
-		});
-	});
-
 		describe('transformRequestBody', () => {
 			const codexInstructions = 'Test Codex Instructions';
 
@@ -834,14 +563,15 @@ describe('Request Transformer Module', () => {
 			expect(result.input![1].content).toBe('new');
 		});
 
-		it('should add tool remap message when tools present', async () => {
+		it('should not prepend bridge or tool-remap message when tools are present', async () => {
 			const body: RequestBody = {
 				model: 'gpt-5',
 				input: [{ type: 'message', role: 'user', content: 'hello' }],
 				tools: [{ name: 'test_tool' }],
 			};
 			const result = await transformRequestBody(body, codexInstructions);
-			expect(result.input![0].role).toBe('developer');
+			expect(result.input).toHaveLength(1);
+			expect(result.input![0].role).toBe('user');
 		});
 
 		it('should not add tool remap message when tools absent', async () => {
@@ -1201,101 +931,93 @@ describe('Request Transformer Module', () => {
 			expect(result.input![1].content).toContain('[Previous tool result; call_id=orphan_custom]');
 		});
 
-		describe('CODEX_MODE parameter', () => {
-			it('should use bridge message when codexMode=true and tools present (default)', async () => {
+		describe('bridge removal parity', () => {
+			it('does not inject bridge content when tools are present', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5',
 					input: [{ type: 'message', role: 'user', content: 'hello' }],
 					tools: [{ name: 'test_tool' }],
 				};
-				const result = await transformRequestBody(body, codexInstructions, undefined, true);
-
-				expect(result.input).toHaveLength(2);
-				expect(result.input![0].role).toBe('developer');
-				expect((result.input![0].content as any)[0].text).toContain('Codex Running in OpenCode');
-			});
-
-			it('should filter OpenCode prompts when codexMode=true', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5',
-					input: [
-						{
-							type: 'message',
-							role: 'developer',
-							content: 'You are a coding agent running in the opencode',
-						},
-						{ type: 'message', role: 'user', content: 'hello' },
-					],
-					tools: [{ name: 'test_tool' }],
-				};
-				const result = await transformRequestBody(body, codexInstructions, undefined, true);
-
-				// Should have bridge message + user message (OpenCode prompt filtered out)
-				expect(result.input).toHaveLength(2);
-				expect(result.input![0].role).toBe('developer');
-				expect((result.input![0].content as any)[0].text).toContain('Codex Running in OpenCode');
-				expect(result.input![1].role).toBe('user');
-			});
-
-			it('should not add bridge message when codexMode=true but no tools', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5',
-					input: [{ type: 'message', role: 'user', content: 'hello' }],
-				};
-				const result = await transformRequestBody(body, codexInstructions, undefined, true);
+				const result = await transformRequestBody(body, codexInstructions);
 
 				expect(result.input).toHaveLength(1);
 				expect(result.input![0].role).toBe('user');
 			});
 
-			it('should use tool remap message when codexMode=false', async () => {
-				const body: RequestBody = {
-					model: 'gpt-5',
-					input: [{ type: 'message', role: 'user', content: 'hello' }],
-					tools: [{ name: 'test_tool' }],
-				};
-				const result = await transformRequestBody(body, codexInstructions, undefined, false);
-
-				expect(result.input).toHaveLength(2);
-				expect(result.input![0].role).toBe('developer');
-				expect((result.input![0].content as any)[0].text).toContain('apply_patch');
-			});
-
-			it('should not filter OpenCode prompts when codexMode=false', async () => {
+			it('preserves OpenCode environment/AGENTS-style developer messages', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5',
 					input: [
 						{
 							type: 'message',
 							role: 'developer',
-							content: 'You are a coding agent running in the opencode',
+							content: [
+								'Here is some useful information about the environment you are running in:',
+								'<env>',
+								'  Working directory: /tmp/project',
+								'</env>',
+								'Instructions from: /tmp/project/AGENTS.md',
+								'# Project Guidelines',
+							].join('\n'),
 						},
 						{ type: 'message', role: 'user', content: 'hello' },
 					],
 					tools: [{ name: 'test_tool' }],
 				};
-				const result = await transformRequestBody(body, codexInstructions, undefined, false);
+				const result = await transformRequestBody(body, codexInstructions);
 
-				// Should have tool remap + opencode prompt + user message
-				expect(result.input).toHaveLength(3);
+				expect(result.input).toHaveLength(2);
 				expect(result.input![0].role).toBe('developer');
-				expect((result.input![0].content as any)[0].text).toContain('apply_patch');
-				expect(result.input![1].role).toBe('developer');
-				expect(result.input![2].role).toBe('user');
+				expect(String(result.input![0].content)).toContain('Working directory');
+				expect(String(result.input![0].content)).toContain('Instructions from: /tmp/project/AGENTS.md');
+				expect(result.input![1].role).toBe('user');
 			});
 
-			it('should default to codexMode=true when parameter not provided', async () => {
+			it('keeps codex instructions as canonical instructions field', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5',
 					input: [{ type: 'message', role: 'user', content: 'hello' }],
 					tools: [{ name: 'test_tool' }],
 				};
-				// Not passing codexMode parameter - should default to true
 				const result = await transformRequestBody(body, codexInstructions);
+				expect(result.instructions).toBe(codexInstructions);
+			});
+		});
 
-				// Should use bridge message (codexMode=true by default)
-				expect(result.input![0].role).toBe('developer');
-				expect((result.input![0].content as any)[0].text).toContain('Codex Running in OpenCode');
+		describe('personality resolution', () => {
+			it('applies model-level friendly personality override', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5.3-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = {
+					global: { personality: 'pragmatic' } as any,
+					models: {
+						'gpt-5.3-codex': {
+							options: { personality: 'friendly' } as any,
+						},
+					},
+				};
+				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
+				expect(result.instructions).toContain('BASE INSTRUCTIONS');
+				expect(result.instructions?.toLowerCase()).toContain('friendly');
+			});
+
+			it('normalizes mixed-case personality and falls back when invalid', async () => {
+				const body: RequestBody = {
+					model: 'gpt-5.4-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = {
+					global: { personality: 'PrAgMaTiC' } as any,
+					models: {
+						'gpt-5.4-codex': {
+							options: { personality: 'INVALID_STYLE' } as any,
+						},
+					},
+				};
+				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
+				expect(result.instructions?.toLowerCase()).toContain('pragmatic');
 			});
 		});
 
