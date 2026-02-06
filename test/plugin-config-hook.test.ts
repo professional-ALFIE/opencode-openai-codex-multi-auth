@@ -203,4 +203,62 @@ describe("OpenAIAuthPlugin config hook", () => {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it("preserves suffixed variant metadata when folding into base model variants", async () => {
+		const root = mkdtempSync(join(tmpdir(), "opencode-config-hook-variant-merge-"));
+		process.env.XDG_CONFIG_HOME = root;
+
+		try {
+			const plugin = await OpenAIAuthPlugin({
+				client: {
+					tui: { showToast: vi.fn() },
+					auth: { set: vi.fn() },
+				} as any,
+			} as any);
+
+			const cfg: any = {
+				provider: {
+					openai: {
+						models: {
+							"gpt-5.3-codex": {
+								id: "gpt-5.3-codex",
+								name: "GPT 5.3 Codex",
+								variants: {
+									low: {
+										reasoningEffort: "low",
+										textVerbosity: "low",
+									},
+								},
+							},
+							"gpt-5.3-codex-high": {
+								id: "gpt-5.3-codex-high",
+								name: "GPT 5.3 Codex High",
+								textVerbosity: "high",
+								reasoningSummary: "detailed",
+								disabled: true,
+							},
+						},
+					},
+				},
+				experimental: {},
+			};
+
+			await (plugin as any).config(cfg);
+
+			expect(cfg.provider.openai.models["gpt-5.3-codex-high"]).toBeUndefined();
+			expect(cfg.provider.openai.models["gpt-5.3-codex"]).toBeDefined();
+			expect(cfg.provider.openai.models["gpt-5.3-codex"].variants.low).toEqual({
+				reasoningEffort: "low",
+				textVerbosity: "low",
+			});
+			expect(cfg.provider.openai.models["gpt-5.3-codex"].variants.high).toMatchObject({
+				reasoningEffort: "high",
+				textVerbosity: "high",
+				reasoningSummary: "detailed",
+				disabled: true,
+			});
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

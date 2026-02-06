@@ -101,6 +101,7 @@ const CLONE_IDENTITY_FIELDS = [
 	"displayName",
 	"display_name",
 ] as const;
+const VARIANT_DISALLOWED_FIELDS = new Set(["id", "slug", "model", "variants"]);
 
 function parseCodexMetadataModel(
 	modelId: string,
@@ -154,6 +155,15 @@ function cloneModelMetadata(
 	return cloned;
 }
 
+function toVariantMetadata(template: Record<string, unknown>): Record<string, unknown> {
+	const variant: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(template)) {
+		if (VARIANT_DISALLOWED_FIELDS.has(key)) continue;
+		variant[key] = value;
+	}
+	return variant;
+}
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -184,6 +194,7 @@ function normalizeProviderModelMetadata(
 			baseTemplate?: Record<string, unknown>;
 			fallbackTemplate?: Record<string, unknown>;
 			seenEfforts: Set<string>;
+			variantTemplates: Map<string, Record<string, unknown>>;
 		}
 	>();
 
@@ -191,7 +202,10 @@ function normalizeProviderModelMetadata(
 		const parsed = parseCodexMetadataModel(modelId);
 		if (!parsed || !isObjectRecord(metadata)) continue;
 
-		const entry = codexBases.get(parsed.baseId) ?? { seenEfforts: new Set<string>() };
+		const entry = codexBases.get(parsed.baseId) ?? {
+			seenEfforts: new Set<string>(),
+			variantTemplates: new Map<string, Record<string, unknown>>(),
+		};
 		if (modelId.toLowerCase() === parsed.baseId) {
 			entry.baseTemplate = metadata;
 		}
@@ -199,6 +213,13 @@ function normalizeProviderModelMetadata(
 			entry.fallbackTemplate = metadata;
 		}
 		if (parsed.effort) entry.seenEfforts.add(parsed.effort);
+		if (parsed.effort) {
+			const prior = entry.variantTemplates.get(parsed.effort);
+			entry.variantTemplates.set(parsed.effort, {
+				...(prior ?? {}),
+				...toVariantMetadata(metadata),
+			});
+		}
 
 		const existingVariants = isObjectRecord(metadata.variants)
 			? (metadata.variants as Record<string, unknown>)
@@ -232,9 +253,15 @@ function normalizeProviderModelMetadata(
 		]);
 
 		for (const effort of efforts) {
-			if (variants[effort] === undefined) {
-				variants[effort] = { reasoningEffort: effort };
-			}
+			const existingVariant = isObjectRecord(variants[effort])
+				? (variants[effort] as Record<string, unknown>)
+				: {};
+			const templateVariant = entry.variantTemplates.get(effort) ?? {};
+			variants[effort] = {
+				...templateVariant,
+				...existingVariant,
+				reasoningEffort: effort,
+			};
 		}
 		baseModel.variants = variants;
 	}
