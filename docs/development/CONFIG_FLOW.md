@@ -2,6 +2,8 @@
 
 This document explains how OpenCode configuration flows from user files through the plugin system to the Codex API.
 
+> Note: Some examples use legacy model aliases for compatibility demonstrations. Runtime normalization maps legacy aliases to current canonical slugs before API submission.
+
 ## Table of Contents
 - [Config Loading Order](#config-loading-order)
 - [Provider Options Flow](#provider-options-flow)
@@ -195,7 +197,7 @@ For a given model, options are merged:
 ### Example 1: Global Options Only
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
@@ -213,7 +215,7 @@ For a given model, options are merged:
 ### Example 2: Per-Model Override
 ```json
 {
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "provider": {
     "openai": {
       "options": {
@@ -249,7 +251,7 @@ For a given model, options are merged:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-openai-codex-auth"],
+  "plugin": ["opencode-openai-codex-multi-auth"],
   "model": "openai/gpt-5-codex-medium",
   "provider": {
     "openai": {

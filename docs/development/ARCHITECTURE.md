@@ -259,13 +259,14 @@ let include: Vec<String> = if reasoning.is_some() {
 
 ```
 1. Original OpenCode Request
-   ├─ model: "gpt-5-codex"
+   ├─ model: "gpt-5.3-codex-high" (example)
    ├─ input: [{ id: "msg_123", ... }, { id: "rs_456", ... }]
    └─ tools: [...]
 
 2. Model Normalization
-   ├─ Detect codex/gpt-5/codex-mini variants
-   └─ Normalize to "gpt-5", "gpt-5-codex", or "codex-mini-latest"
+   ├─ Resolve known mappings from model map
+   ├─ Apply fallback normalization for unknown variants
+   └─ Normalize to canonical Codex slug (for API + metadata lookups)
 
 3. Config Merging
    ├─ Global options (provider.openai.options)
@@ -279,7 +280,10 @@ let include: Vec<String> = if reasoning.is_some() {
 
 5. System Prompt Handling
    ├─ Preserve OpenCode env + AGENTS/runtime metadata messages
-   ├─ Replace instructions with Codex prompt + personality rendering
+   ├─ Load Codex instructions by model family (GitHub ETag-cached)
+   ├─ Load model runtime defaults (online-first /codex/models fallback chain)
+   ├─ Render personality using precedence:
+   │   model option → online model default → global backup → static default
    └─ Do not inject bridge/tool-remap overlays
 
 6. Orphan Tool Output Handling
@@ -288,9 +292,9 @@ let include: Vec<String> = if reasoning.is_some() {
    └─ Convert unmatched outputs to assistant messages (preserve context)
 
 7. Reasoning Configuration
-   ├─ Set reasoningEffort (minimal/low/medium/high)
+   ├─ Set reasoningEffort (including xhigh where supported)
    ├─ Set reasoningSummary (auto/detailed)
-   └─ Based on model variant
+   └─ Set text verbosity + include fields from resolved config
 
 8. Prompt Caching & Session Headers
    ├─ Preserve host-supplied prompt_cache_key (OpenCode session id)
@@ -305,10 +309,10 @@ let include: Vec<String> = if reasoning.is_some() {
    ├─ reasoning: { effort, summary }
    ├─ text: { verbosity }
    ├─ include: ["reasoning.encrypted_content"]
-   └─ prompt_cache_key: conversation-scoped UUID
+   └─ prompt_cache_key: host-supplied conversation-scoped key (if provided)
 ```
 
-**Source**: `lib/request/request-transformer.ts:265-329`
+**Source**: `lib/request/request-transformer.ts`, `lib/request/fetch-helpers.ts`, `lib/prompts/codex.ts`, `lib/prompts/codex-models.ts`
 
 ---
 
@@ -322,16 +326,16 @@ let include: Vec<String> = if reasoning.is_some() {
 | **store Parameter** | `false` (ChatGPT) | `false` | ✅ |
 | **Message IDs** | Stripped in stateless | Stripped | ✅ |
 | **reasoning.encrypted_content** | ✅ Included | ✅ Included | ✅ |
-| **Model Normalization** | "gpt-5" / "gpt-5-codex" / "codex-mini-latest" | Same | ✅ |
+| **Model Normalization** | Canonical Codex slugs | Canonical Codex slugs | ✅ |
 | **Reasoning Effort** | medium (default) | medium (default) | ✅ |
-| **Text Verbosity** | medium (codex), low (gpt-5) | Same | ✅ |
+| **Text Verbosity** | Model/config dependent | Model/config dependent | ✅ |
 
 ### What We Add
 
 | Feature | Codex CLI | This Plugin | Why? |
 |---------|-----------|-------------|------|
-| **Codex-OpenCode Bridge** | N/A (native) | ✅ Custom prompt | OpenCode → Codex translation |
-| **OpenCode Prompt Filtering** | N/A | ✅ Filter & replace | Remove OpenCode prompts, keep env/AGENTS |
+| **OpenCode Runtime Metadata Preservation** | Native runtime | ✅ Preserve env/AGENTS developer messages | Keep harness context intact without duplicating tool contracts |
+| **Online-First Model Metadata Fallbacks** | Native model manager | ✅ `/codex/models` → cache → GitHub → static | Resilient runtime defaults + personality templates |
 | **Orphan Tool Output Handling** | ✅ Drop orphans | ✅ Convert to messages | Preserve context + avoid 400s |
 | **Usage-limit messaging** | CLI prints status | ✅ Friendly error summary | Surface 5h/weekly windows in OpenCode |
 | **Per-Model Options** | CLI flags | ✅ Config file | Better UX in OpenCode |
@@ -392,7 +396,7 @@ let include: Vec<String> = if reasoning.is_some() {
 **Alternative**: Single global config
 
 **Problem**:
-- `gpt-5-codex` optimal settings differ from `gpt-5-nano`
+- `gpt-5.1-codex` optimal settings differ from `gpt-5.1`
 - Users want quick switching between quality levels
 - No way to save "presets"
 

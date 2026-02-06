@@ -29,6 +29,7 @@ npx -y opencode-openai-codex-multi-auth@latest
 ```
 
 This writes the **global** config at `~/.config/opencode/opencode.jsonc` (falls back to `.json` if needed), backs it up, and clears the OpenCode plugin cache so the latest version installs.
+It seeds templates **online-first** (latest release, then `main`) and falls back to bundled static templates if network sources are unavailable.
 
 Need legacy config (OpenCode v1.0.209 and below)?
 
@@ -313,7 +314,7 @@ Prompt caching is enabled out of the box: when OpenCode sends its session identi
 
 ### Migration Note: Legacy `codexMode`
 
-The old bridge-mode behavior has been removed. `codexMode` is now legacy-only and no longer changes request prompt/tool behavior. The runtime now relies on Codex instructions, OpenCode harness metadata, and live tool schemas.
+The old bridge-mode behavior has been removed. `codexMode` is deprecated (no-op) and no longer changes request prompt/tool behavior. The runtime now relies on Codex instructions, OpenCode harness metadata, and live tool schemas.
 
 > **⚠️ CRITICAL:** This full configuration is REQUIRED. OpenCode's context auto-compaction and usage sidebar only work with this full configuration. GPT 5 models are temperamental and need proper setup - minimal configurations are NOT supported.
 
@@ -427,7 +428,7 @@ For plugin development or testing unreleased changes:
 
 **Build the plugin:**
 ```bash
-cd opencode-openai-codex-auth
+cd opencode-openai-codex-multi-auth
 npm install
 npm run build
 ```

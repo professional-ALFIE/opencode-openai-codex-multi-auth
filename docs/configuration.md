@@ -463,6 +463,18 @@ CODEX_AUTH_RETRY_ALL_MAX_RETRIES=1
 - Messages bubble up in OpenCode exactly where SDK errors normally surface.
 - Helpful when working inside the OpenCode UI or CLI—users immediately see reset timing.
 
+### Template and metadata refresh
+
+- Installer template seeding is online-first:
+  - plugin release template (`config/opencode-modern.json` / `config/opencode-legacy.json`)
+  - plugin `main` template
+  - bundled static template fallback
+- Runtime model metadata is online-first:
+  - Codex `/backend-api/codex/models`
+  - local `codex-models-cache.json` fallback
+  - Codex GitHub `models.json` fallback (`latest release` then `main`)
+  - static template defaults as final fallback
+
 ---
 
 ## Configuration Files
@@ -499,7 +511,7 @@ DEBUG_CODEX_PLUGIN=1 opencode run "test" --model=openai/your-model-name
 
 Look for:
 ```
-[openai-codex-plugin] Model config lookup: "your-model-name" → normalized to "gpt-5-codex" for API {
+[openai-codex-plugin] Model config lookup: "your-model-name" → normalized to "gpt-5.1-codex" for API {
   hasModelSpecificConfig: true,
   resolvedConfig: { ... }
 }
