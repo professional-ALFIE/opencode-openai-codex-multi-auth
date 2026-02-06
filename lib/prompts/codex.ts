@@ -21,6 +21,7 @@ const __dirname = dirname(__filename);
  * Based on codex-rs/core/src/model_family.rs logic
  */
 const PROMPT_FILES: Record<ModelFamily, string> = {
+	"gpt-5.3-codex": "gpt-5.2-codex_prompt.md",
 	"gpt-5.2-codex": "gpt-5.2-codex_prompt.md",
 	"codex-max": "gpt-5.1-codex-max_prompt.md",
 	codex: "gpt_5_codex_prompt.md",
@@ -32,6 +33,7 @@ const PROMPT_FILES: Record<ModelFamily, string> = {
  * Cache file mapping for each model family
  */
 const CACHE_FILES: Record<ModelFamily, string> = {
+	"gpt-5.3-codex": "gpt-5.2-codex-instructions.md",
 	"gpt-5.2-codex": "gpt-5.2-codex-instructions.md",
 	"codex-max": "codex-max-instructions.md",
 	codex: "codex-instructions.md",
@@ -58,6 +60,12 @@ function ensureCacheMigrated(): void {
  */
 export function getModelFamily(normalizedModel: string): ModelFamily {
 	// Order matters - check more specific patterns first
+	if (
+		normalizedModel.includes("gpt-5.3-codex") ||
+		normalizedModel.includes("gpt 5.3 codex")
+	) {
+		return "gpt-5.3-codex";
+	}
 	if (
 		normalizedModel.includes("gpt-5.2-codex") ||
 		normalizedModel.includes("gpt 5.2 codex")
