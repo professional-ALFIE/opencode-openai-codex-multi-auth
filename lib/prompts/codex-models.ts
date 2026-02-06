@@ -249,9 +249,9 @@ function readStaticTemplateDefaults(moduleDir: string = __dirname): Map<string, 
 	return defaults;
 }
 
-async function loadModelsCatalog(
+async function loadServerAndCacheCatalog(
 	options: ModelsFetchOptions,
-): Promise<{ models: ModelInfo[]; source: "server" | "cache" | "github" | "static" }> {
+): Promise<{ serverModels?: ModelInfo[]; cachedModels?: ModelInfo[] }> {
 	const cached = readModelsCache();
 
 	try {
@@ -263,32 +263,16 @@ async function loadModelsCatalog(
 				models: server.models,
 				etag: server.etag,
 			});
-			return { models: server.models, source: "server" };
+			return {
+				serverModels: server.models,
+				cachedModels: cached?.models,
+			};
 		}
 	} catch (error) {
 		logDebug("Server /models fetch failed; attempting fallbacks", error);
 	}
 
-	if (cached) {
-		return { models: cached.models, source: "cache" };
-	}
-
-	try {
-		const githubModels = await fetchModelsFromGitHub(options);
-		if (githubModels) {
-			writeModelsCache({
-				fetchedAt: Date.now(),
-				source: "github",
-				models: githubModels,
-				etag: null,
-			});
-			return { models: githubModels, source: "github" };
-		}
-	} catch (error) {
-		logDebug("GitHub models fallback failed; using static template defaults", error);
-	}
-
-	return { models: [], source: "static" };
+	return { cachedModels: cached?.models };
 }
 
 function resolveModelInfo(
@@ -304,8 +288,30 @@ export async function getCodexModelRuntimeDefaults(
 	normalizedModel: string,
 	options: ModelsFetchOptions = {},
 ): Promise<CodexModelRuntimeDefaults> {
-	const catalog = await loadModelsCatalog(options);
-	const model = resolveModelInfo(catalog.models, normalizedModel);
+	const { serverModels, cachedModels } = await loadServerAndCacheCatalog(options);
+	let model = resolveModelInfo(serverModels ?? [], normalizedModel);
+
+	if (!model && cachedModels) {
+		model = resolveModelInfo(cachedModels, normalizedModel);
+	}
+
+	if (!model) {
+		try {
+			const githubModels = await fetchModelsFromGitHub(options);
+			if (githubModels) {
+				writeModelsCache({
+					fetchedAt: Date.now(),
+					source: "github",
+					models: githubModels,
+					etag: null,
+				});
+				model = resolveModelInfo(githubModels, normalizedModel);
+			}
+		} catch (error) {
+			logDebug("GitHub models fallback failed; using static template defaults", error);
+		}
+	}
+
 	const staticDefaults = readStaticTemplateDefaults();
 	const staticDefaultPersonality =
 		(staticDefaults.get(stripEffortSuffix(normalizeModelSlug(normalizedModel)))

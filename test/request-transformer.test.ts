@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
     normalizeModel,
     getModelConfig,
@@ -1003,7 +1003,25 @@ describe('Request Transformer Module', () => {
 				expect(result.instructions?.toLowerCase()).toContain('friendly');
 			});
 
-			it('normalizes mixed-case personality and falls back when invalid', async () => {
+			it('applies model options when model id is provider-prefixed', async () => {
+				const body: RequestBody = {
+					model: 'openai/gpt-5.3-codex',
+					input: [],
+				};
+				const userConfig: UserConfig = {
+					global: { personality: 'pragmatic' } as any,
+					models: {
+						'gpt-5.3-codex': {
+							options: { personality: 'friendly' } as any,
+						},
+					},
+				};
+				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
+				expect(result.instructions?.toLowerCase()).toContain('friendly');
+				expect(result.instructions?.toLowerCase()).not.toContain('pragmatic');
+			});
+
+			it('normalizes mixed-case personality and coerces invalid to none', async () => {
 				const body: RequestBody = {
 					model: 'gpt-5.4-codex',
 					input: [],
@@ -1017,7 +1035,52 @@ describe('Request Transformer Module', () => {
 					},
 				};
 				const result = await transformRequestBody(body, 'BASE INSTRUCTIONS', userConfig);
-				expect(result.instructions?.toLowerCase()).toContain('pragmatic');
+				expect(result.instructions).toBe('BASE INSTRUCTIONS');
+			});
+
+			it('logs invalid personality once per process while coercing to none', async () => {
+				const previousLogging = process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+				process.env.ENABLE_PLUGIN_REQUEST_LOGGING = '1';
+				const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+				try {
+					vi.resetModules();
+					const dynamicModule = await import('../lib/request/request-transformer.js');
+					const dynamicTransform = dynamicModule.transformRequestBody;
+					const body: RequestBody = {
+						model: 'gpt-5.4-codex',
+						input: [],
+					};
+					const userConfig: UserConfig = {
+						global: { personality: 'INVALID_GLOBAL' } as any,
+						models: {
+							'gpt-5.4-codex': {
+								options: { personality: 'INVALID_MODEL' } as any,
+							},
+						},
+					};
+
+					const first = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
+					const second = await dynamicTransform(body, 'BASE INSTRUCTIONS', userConfig);
+
+					expect(first.instructions).toBe('BASE INSTRUCTIONS');
+					expect(second.instructions).toBe('BASE INSTRUCTIONS');
+
+					const invalidLogs = logSpy.mock.calls.filter((call) =>
+						call.some((part) =>
+							String(part).includes('Invalid model personality "INVALID_MODEL" detected; coercing to "none"'),
+						),
+					);
+					expect(invalidLogs).toHaveLength(1);
+				} finally {
+					if (previousLogging === undefined) {
+						delete process.env.ENABLE_PLUGIN_REQUEST_LOGGING;
+					} else {
+						process.env.ENABLE_PLUGIN_REQUEST_LOGGING = previousLogging;
+					}
+					vi.restoreAllMocks();
+					vi.resetModules();
+				}
 			});
 
 			it('applies global personality when runtime defaults only provide template messages', async () => {

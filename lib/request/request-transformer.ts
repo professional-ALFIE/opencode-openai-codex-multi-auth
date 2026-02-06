@@ -26,22 +26,28 @@ const PERSONALITY_FALLBACK_TEXT: Record<Exclude<PersonalityOption, "none">, stri
 };
 let didLogInvalidPersonality = false;
 
-function normalizePersonalityValue(
+type PersonalityParseResult =
+	| { kind: "unset" }
+	| { kind: "valid"; value: PersonalityOption }
+	| { kind: "invalid" };
+
+function parsePersonalityValue(
 	value: unknown,
 	source: "model" | "global",
-): PersonalityOption | undefined {
-	if (typeof value !== "string") return undefined;
+): PersonalityParseResult {
+	if (typeof value !== "string") return { kind: "unset" };
 	const normalized = value.trim().toLowerCase();
+	if (!normalized) return { kind: "unset" };
 	if (!PERSONALITY_VALUES.has(normalized as PersonalityOption)) {
 		if (!didLogInvalidPersonality) {
 			logDebug(
-				`Ignoring invalid ${source} personality "${value}" and using fallback chain`,
+				`Invalid ${source} personality "${value}" detected; coercing to "none"`,
 			);
 			didLogInvalidPersonality = true;
 		}
-		return undefined;
+		return { kind: "invalid" };
 	}
-	return normalized as PersonalityOption;
+	return { kind: "valid", value: normalized as PersonalityOption };
 }
 
 function resolvePersonality(
@@ -49,21 +55,46 @@ function resolvePersonality(
 	globalOptions: ConfigOptions,
 	runtimeDefaults?: CodexModelRuntimeDefaults,
 ): PersonalityOption {
-	const modelValue = normalizePersonalityValue(modelOptions.personality, "model");
-	if (modelValue) return modelValue;
+	const modelValue = parsePersonalityValue(modelOptions.personality, "model");
+	if (modelValue.kind === "valid") return modelValue.value;
+	if (modelValue.kind === "invalid") return "none";
 
 	// Online model default is preferred over global backup when available.
 	if (runtimeDefaults?.onlineDefaultPersonality) {
 		return runtimeDefaults.onlineDefaultPersonality;
 	}
 
-	const globalValue = normalizePersonalityValue(
+	const globalValue = parsePersonalityValue(
 		globalOptions.personality,
 		"global",
 	);
-	if (globalValue) return globalValue;
+	if (globalValue.kind === "valid") return globalValue.value;
+	if (globalValue.kind === "invalid") return "none";
 
 	return runtimeDefaults?.staticDefaultPersonality ?? "none";
+}
+
+function getModelLookupCandidates(
+	originalModel: string | undefined,
+	normalizedModel: string,
+): string[] {
+	const candidates: string[] = [];
+	const seen = new Set<string>();
+
+	const add = (value: string | undefined) => {
+		if (!value) return;
+		const trimmed = value.trim();
+		if (!trimmed || seen.has(trimmed)) return;
+		seen.add(trimmed);
+		candidates.push(trimmed);
+	};
+
+	add(originalModel);
+	add(originalModel?.split("/").pop());
+	add(normalizedModel);
+	add(normalizedModel.split("/").pop());
+
+	return candidates;
 }
 
 function resolvePersonalityMessage(
@@ -428,12 +459,16 @@ export async function transformRequestBody(
 	const originalModel = body.model;
 	const normalizedModel = normalizeModel(body.model);
 	const globalOptions = userConfig.global || {};
-	const modelOptions = userConfig.models?.[originalModel || normalizedModel]?.options || {};
+	const lookupCandidates = getModelLookupCandidates(originalModel, normalizedModel);
+	const resolvedModelKey = lookupCandidates.find(
+		(candidate) => !!userConfig.models?.[candidate],
+	);
+	const modelLookupKey = resolvedModelKey ?? normalizedModel;
+	const modelOptions = userConfig.models?.[modelLookupKey]?.options || {};
 
 	// Get model-specific configuration using ORIGINAL model name (config key)
-	// This allows per-model options like "gpt-5-codex-low" to work correctly
-	const lookupModel = originalModel || normalizedModel;
-	const modelConfig = getModelConfig(lookupModel, userConfig);
+	// with fallbacks for provider-prefixed and normalized aliases
+	const modelConfig = getModelConfig(modelLookupKey, userConfig);
 	const personality = resolvePersonality(
 		modelOptions,
 		globalOptions,
@@ -441,9 +476,10 @@ export async function transformRequestBody(
 	);
 
 	logDebug(
-		`Model config lookup: "${lookupModel}" → normalized to "${normalizedModel}" for API`,
+		`Model config lookup: "${modelLookupKey}" → normalized to "${normalizedModel}" for API`,
 		{
-			hasModelSpecificConfig: !!userConfig.models?.[lookupModel],
+			lookupCandidates,
+			hasModelSpecificConfig: !!resolvedModelKey,
 			resolvedConfig: modelConfig,
 			personality,
 		},

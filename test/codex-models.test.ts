@@ -183,6 +183,140 @@ describe("codex model metadata resolver", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
+	it("falls back to cached target model when server catalog omits it", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-server-miss-cache-hit-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		const seedFetch = vi.fn(async () => {
+			return new Response(
+				JSON.stringify({
+					models: [
+						{
+							slug: "gpt-5.4-codex",
+							model_messages: {
+								instructions_template: "Base {{ personality }}",
+								instructions_variables: {
+									personality_default: "",
+									personality_friendly: "Friendly from cached target",
+									personality_pragmatic: "Pragmatic from cached target",
+								},
+							},
+						},
+					],
+				}),
+				{ status: 200 },
+			);
+		});
+
+		await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: seedFetch as unknown as typeof fetch,
+		});
+
+		const serverMissFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from server other model",
+										personality_pragmatic: "Pragmatic from server other model",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200 },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: serverMissFetch as unknown as typeof fetch,
+		});
+
+		expect(defaults.personalityMessages?.friendly).toBe("Friendly from cached target");
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("falls back to GitHub when server catalog succeeds but lacks requested model", async () => {
+		const root = mkdtempSync(join(tmpdir(), "codex-models-server-miss-github-hit-"));
+		process.env.XDG_CONFIG_HOME = root;
+		const { getCodexModelRuntimeDefaults } = await loadModule();
+
+		const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const url = input.toString();
+			if (url.includes("/codex/models")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.3-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from server only",
+										personality_pragmatic: "Pragmatic from server only",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200 },
+				);
+			}
+			if (url.includes("/releases/latest")) {
+				return new Response(JSON.stringify({ tag_name: "rust-v9.9.9" }), {
+					status: 200,
+				});
+			}
+			if (url.includes("raw.githubusercontent.com/openai/codex/rust-v9.9.9")) {
+				return new Response(
+					JSON.stringify({
+						models: [
+							{
+								slug: "gpt-5.4-codex",
+								model_messages: {
+									instructions_template: "Base {{ personality }}",
+									instructions_variables: {
+										personality_default: "",
+										personality_friendly: "Friendly from GitHub targeted fallback",
+										personality_pragmatic: "Pragmatic from GitHub targeted fallback",
+									},
+								},
+							},
+						],
+					}),
+					{ status: 200 },
+				);
+			}
+			throw new Error(`Unexpected URL: ${url}`);
+		});
+
+		const defaults = await getCodexModelRuntimeDefaults("gpt-5.4-codex", {
+			accessToken: "token",
+			accountId: "account",
+			fetchImpl: mockFetch as unknown as typeof fetch,
+		});
+
+		expect(defaults.personalityMessages?.friendly).toBe(
+			"Friendly from GitHub targeted fallback",
+		);
+		rmSync(root, { recursive: true, force: true });
+	});
+
 	it("falls back to GitHub models when cache is missing and server fails", async () => {
 		const root = mkdtempSync(join(tmpdir(), "codex-models-github-fallback-"));
 		process.env.XDG_CONFIG_HOME = root;
