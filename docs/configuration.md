@@ -367,27 +367,13 @@ Advanced plugin settings in `~/.config/opencode/openai-codex-auth-config.json`:
 
 ```json
 {
-  "codexMode": true
+  "codexMode": false
 }
 ```
 
-### CODEX_MODE
+### Legacy `codexMode` (No-op)
 
-**What it does:**
-- `true` (default): Uses Codex-OpenCode bridge prompt (Task tool & MCP aware)
-- `false`: Uses legacy tool remap message
-- Bridge prompt content is synced with the latest Codex CLI release (ETag-cached)
-
-**When to disable:**
-- Compatibility issues with OpenCode updates
-- Testing different prompt styles
-- Debugging tool call issues
-
-**Override with environment variable:**
-```bash
-CODEX_MODE=0 opencode run "task"  # Temporarily disable
-CODEX_MODE=1 opencode run "task"  # Temporarily enable
-```
+`codexMode` is retained only for backwards compatibility. Bridge mode was removed, and this field no longer changes runtime prompt or tool behavior.
 
 ### Multi-Account Settings
 
@@ -400,7 +386,7 @@ Add `$schema` for editor autocompletion:
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/main/assets/openai-codex-auth-config.schema.json",
-  "codexMode": true,
+  "codexMode": false,
   "accountSelectionStrategy": "sticky",
   "pidOffsetEnabled": true,
   "quietMode": false,

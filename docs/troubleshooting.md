@@ -456,7 +456,7 @@ cat ~/.config/opencode/logs/codex-plugin/request-*-stream-full.json | grep -o '"
 **Reduce tokens:**
 1. Lower `textVerbosity`
 2. Lower `reasoningEffort`
-3. Shorter system prompts (disable CODEX_MODE if needed)
+3. Keep custom system prompts concise
 
 ---
 

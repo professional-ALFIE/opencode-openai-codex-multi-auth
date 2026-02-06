@@ -371,12 +371,10 @@ Most common settings should be global:
 }
 ```
 
-### 4. Use Config Files, Not Environment Variables
-While you can set `CODEX_MODE=0` to disable the bridge prompt, it's better to document such settings in config files:
+### 4. Prefer Config Files for Plugin Settings
+Use plugin config files for persistent behavior. Legacy `codexMode` is now a no-op and does not alter prompt/tool handling.
 
-❌ **Bad**: `CODEX_MODE=0 opencode`
-
-✅ **Good**: Create `~/.config/opencode/openai-codex-auth-config.json`:
+Example `~/.config/opencode/openai-codex-auth-config.json`:
 ```json
 {
   "codexMode": false

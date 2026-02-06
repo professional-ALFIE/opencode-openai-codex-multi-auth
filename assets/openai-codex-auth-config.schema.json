@@ -11,8 +11,9 @@
     },
     "codexMode": {
       "type": "boolean",
-      "default": true,
-      "description": "Enable CODEX_MODE (Codex/OpenCode bridge prompt)."
+      "default": false,
+      "deprecated": true,
+      "description": "Deprecated legacy field. Bridge mode has been removed and this flag is now a no-op."
     },
     "accountSelectionStrategy": {
       "type": "string",
