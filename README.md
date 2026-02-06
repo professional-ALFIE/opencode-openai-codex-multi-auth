@@ -1,6 +1,7 @@
 ![Image 1: opencode-openai-codex-auth](assets/readme-hero.svg)
-  
-  
+
+**This project is now EOL and no further developments will be made. A complete rewrite, based on the current native implementation of OpenAI's OAuth in Opencode, is now underway and will be available at [https://github.com/iam-brain/opencode-openai-multi](https://github.com/iam-brain/opencode-openai-multi) when complete.**
+
 Fork maintained by [iam-brain](https://github.com/iam-brain).
 
 Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://github.com/numman-ali/opencode-openai-codex-auth)
@@ -10,13 +11,6 @@ Upstream project (credit): [numman-ali/opencode-openai-codex-auth](https://githu
 
 **One install. Every Codex model. Multi-account aware.**
 [Install](#-quick-start) · [Models](#-models) · [Configuration](#-configuration) · [Docs](#-docs)
-
-**NOTE:**
-
-Currently, the CLI (opencode auth login) path does not work correctly due to a possibly unintentional bug in how Opencode handles provider logins in their CLI. The TUI (opencode > ctrl + x m > ctrl + a, OpenAI) path works perfectly as it functions as intended.
-> Related issue: [Issue #10898](https://github.com/anomalyco/opencode/issues/10898)
-
-> Related PRs: [Pull #11058](https://github.com/anomalyco/opencode/pull/11058) // [Pull #11076](https://github.com/anomalyco/opencode/pull/11076)
 
 ---
 ## 💡 Philosophy
