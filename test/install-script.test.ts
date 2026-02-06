@@ -8,9 +8,13 @@ import { parse } from 'jsonc-parser';
 const SCRIPT_PATH = resolve(process.cwd(), 'scripts', 'install-opencode-codex-auth.js');
 const EXPECTED_PLUGIN_LATEST = 'opencode-openai-codex-multi-auth@latest';
 
-const runInstaller = (args: string[], homeDir: string) => {
+const runInstaller = (
+	args: string[],
+	homeDir: string,
+	envOverrides: Record<string, string> = {},
+) => {
 	execFileSync(process.execPath, [SCRIPT_PATH, ...args], {
-		env: { ...process.env, HOME: homeDir },
+		env: { ...process.env, HOME: homeDir, ...envOverrides },
 		stdio: 'pipe',
 	});
 };
@@ -88,6 +92,42 @@ describe('Install script', () => {
 		expect(existsSync(configPath)).toBe(true);
 		const { data } = readJsoncFile(configPath);
 		expect(data.plugin).toContain(EXPECTED_PLUGIN_LATEST);
+	});
+
+	it('uses online template when available', () => {
+		const homeDir = makeHome();
+		const releaseApiUrl =
+			'https://api.github.com/repos/iam-brain/opencode-openai-codex-multi-auth/releases/latest';
+		const templateUrl =
+			'https://raw.githubusercontent.com/iam-brain/opencode-openai-codex-multi-auth/vtest/config/opencode-modern.json';
+
+		runInstaller(['--no-cache-clear'], homeDir, {
+			OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE: '1',
+			OPENCODE_TEST_FETCH_MOCKS: JSON.stringify({
+				[releaseApiUrl]: {
+					status: 200,
+					json: { tag_name: 'vtest' },
+				},
+				[templateUrl]: {
+					status: 200,
+					json: {
+						provider: {
+							openai: {
+								models: {
+									'online-only-model': {
+										options: { reasoningEffort: 'high' },
+									},
+								},
+							},
+						},
+					},
+				},
+			}),
+		});
+
+		const configPath = join(homeDir, '.config', 'opencode', 'opencode.jsonc');
+		const { data } = readJsoncFile(configPath);
+		expect(data.provider.openai.models['online-only-model']).toBeDefined();
 	});
 
 	it('preserves pinned plugin versions', () => {

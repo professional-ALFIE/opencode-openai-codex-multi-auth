@@ -62,7 +62,6 @@ export interface ModelsFetchOptions {
 
 const CACHE_DIR = getOpencodeCacheDir();
 const MODELS_CACHE_FILE = join(CACHE_DIR, "codex-models-cache.json");
-const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
 const MODELS_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_DEFAULT_PERSONALITY: PersonalityOption = "none";
 const EFFORT_SUFFIX_REGEX = /-(none|minimal|low|medium|high|xhigh)$/i;
@@ -71,10 +70,10 @@ const PERSONALITY_VALUES = new Set<PersonalityOption>([
 	"friendly",
 	"pragmatic",
 ]);
+const STATIC_TEMPLATE_FILES = ["opencode-modern.json", "opencode-legacy.json"];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const REPO_ROOT = join(__dirname, "..", "..");
 
 function normalizeModelSlug(model: string): string {
 	return model.toLowerCase().trim();
@@ -113,10 +112,6 @@ function writeModelsCache(cache: ModelsCache): void {
 	} catch (error) {
 		logWarn("Failed to write models cache", error);
 	}
-}
-
-function isFreshCache(cache: ModelsCache): boolean {
-	return Date.now() - cache.fetchedAt < MODELS_CACHE_TTL_MS;
 }
 
 function parseModelsResponse(payload: unknown): ModelInfo[] {
@@ -181,22 +176,57 @@ async function fetchModelsFromGitHub(
 	options: ModelsFetchOptions,
 ): Promise<ModelInfo[] | null> {
 	const fetchImpl = options.fetchImpl ?? fetch;
-	const latestTag = await getLatestReleaseTag(fetchImpl);
-	const url = `https://raw.githubusercontent.com/openai/codex/${latestTag}/codex-rs/core/models.json`;
-	const response = await fetchImpl(url);
-	if (!response.ok) {
-		throw new Error(`HTTP ${response.status}`);
+	const refs: string[] = [];
+	try {
+		const latestTag = await getLatestReleaseTag(fetchImpl);
+		refs.push(latestTag);
+	} catch (error) {
+		logDebug("Failed to determine latest codex release tag; trying main fallback", error);
 	}
-	const parsed = parseModelsResponse(await response.json());
-	return parsed.length > 0 ? parsed : null;
+	refs.push("main");
+
+	for (const ref of refs) {
+		const url = `https://raw.githubusercontent.com/openai/codex/${ref}/codex-rs/core/models.json`;
+		try {
+			const response = await fetchImpl(url);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const parsed = parseModelsResponse(await response.json());
+			if (parsed.length > 0) {
+				return parsed;
+			}
+		} catch (error) {
+			logDebug(`Failed to fetch models.json from openai/codex@${ref}`, error);
+		}
+	}
+
+	return null;
 }
 
-function readStaticTemplateDefaults(): Map<string, ConfigOptions> {
-	const defaults = new Map<string, ConfigOptions>();
-	const templateFiles = [
-		join(REPO_ROOT, "config", "opencode-modern.json"),
-		join(REPO_ROOT, "config", "opencode-legacy.json"),
+function resolveStaticTemplateFiles(moduleDir: string = __dirname): string[] {
+	const candidateConfigDirs = [
+		join(moduleDir, "..", "..", "config"),
+		join(moduleDir, "..", "..", "..", "config"),
 	];
+	const files: string[] = [];
+	const seen = new Set<string>();
+
+	for (const configDir of candidateConfigDirs) {
+		for (const fileName of STATIC_TEMPLATE_FILES) {
+			const filePath = join(configDir, fileName);
+			if (seen.has(filePath)) continue;
+			seen.add(filePath);
+			files.push(filePath);
+		}
+	}
+
+	return files;
+}
+
+function readStaticTemplateDefaults(moduleDir: string = __dirname): Map<string, ConfigOptions> {
+	const defaults = new Map<string, ConfigOptions>();
+	const templateFiles = resolveStaticTemplateFiles(moduleDir);
 
 	for (const filePath of templateFiles) {
 		try {
@@ -223,9 +253,6 @@ async function loadModelsCatalog(
 	options: ModelsFetchOptions,
 ): Promise<{ models: ModelInfo[]; source: "server" | "cache" | "github" | "static" }> {
 	const cached = readModelsCache();
-	if (cached && isFreshCache(cached) && !options.forceRefresh) {
-		return { models: cached.models, source: "cache" };
-	}
 
 	try {
 		const server = await fetchModelsFromServer(options);
@@ -314,5 +341,6 @@ export async function getCodexModelRuntimeDefaults(
 export const __internal = {
 	MODELS_CACHE_FILE,
 	readStaticTemplateDefaults,
+	resolveStaticTemplateFiles,
 	readModelsCache,
 };

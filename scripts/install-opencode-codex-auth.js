@@ -47,6 +47,20 @@ const skipCacheClear = args.has("--no-cache-clear");
 const ONLINE_FETCH_TIMEOUT_MS = 1500;
 const GITHUB_REPO = "iam-brain/opencode-openai-codex-multi-auth";
 const GITHUB_RELEASE_API = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const TEMPLATE_RELEASE_API =
+	process.env.OPENCODE_TEMPLATE_RELEASE_API || GITHUB_RELEASE_API;
+const TEMPLATE_RAW_BASE =
+	process.env.OPENCODE_TEMPLATE_RAW_BASE || "https://raw.githubusercontent.com";
+const TEST_FETCH_MOCKS = (() => {
+	const raw = process.env.OPENCODE_TEST_FETCH_MOCKS;
+	if (!raw) return null;
+	try {
+		const parsed = JSON.parse(raw);
+		return parsed && typeof parsed === "object" ? parsed : null;
+	} catch {
+		return null;
+	}
+})();
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -121,6 +135,20 @@ function removePluginEntries(list) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = ONLINE_FETCH_TIMEOUT_MS) {
+	if (TEST_FETCH_MOCKS && Object.prototype.hasOwnProperty.call(TEST_FETCH_MOCKS, url)) {
+		const entry = TEST_FETCH_MOCKS[url];
+		if (entry && typeof entry === "object") {
+			const status = typeof entry.status === "number" ? entry.status : 200;
+			const headers = entry.headers && typeof entry.headers === "object" ? entry.headers : {};
+			const body =
+				typeof entry.body === "string"
+					? entry.body
+					: JSON.stringify(entry.body ?? entry.json ?? {});
+			return new Response(body, { status, headers });
+		}
+		return new Response(String(entry ?? ""), { status: 200 });
+	}
+
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 	try {
@@ -131,7 +159,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = ONLINE_FETCH_TIME
 }
 
 async function fetchLatestReleaseTag() {
-	const response = await fetchWithTimeout(GITHUB_RELEASE_API);
+	const response = await fetchWithTimeout(TEMPLATE_RELEASE_API);
 	if (!response.ok) {
 		throw new Error(`release lookup failed: HTTP ${response.status}`);
 	}
@@ -144,20 +172,22 @@ async function fetchLatestReleaseTag() {
 }
 
 async function fetchRemoteTemplate(useLegacyTemplate) {
-	// Keep tests deterministic and fast.
-	if (process.env.VITEST) return null;
+	// Keep tests deterministic and fast unless explicitly enabled for integration tests.
+	if (process.env.VITEST && process.env.OPENCODE_TEST_ALLOW_ONLINE_TEMPLATE !== "1") {
+		return null;
+	}
 
 	const fileName = useLegacyTemplate ? "opencode-legacy.json" : "opencode-modern.json";
 	const candidateUrls = [];
 	try {
 		const latestTag = await fetchLatestReleaseTag();
 		candidateUrls.push(
-			`https://raw.githubusercontent.com/${GITHUB_REPO}/${latestTag}/config/${fileName}`,
+			`${TEMPLATE_RAW_BASE.replace(/\/$/, "")}/${GITHUB_REPO}/${latestTag}/config/${fileName}`,
 		);
 	} catch {
 	}
 	candidateUrls.push(
-		`https://raw.githubusercontent.com/${GITHUB_REPO}/main/config/${fileName}`,
+		`${TEMPLATE_RAW_BASE.replace(/\/$/, "")}/${GITHUB_REPO}/main/config/${fileName}`,
 	);
 
 	for (const url of candidateUrls) {
